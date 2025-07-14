@@ -1,0 +1,124 @@
+name: Buildandsign
+
+on:
+  workflow_call:
+    inputs:
+      unikernel:
+        required: true
+        type: string
+      hypervisor:
+        required: true
+        type: string
+      registry:
+        type: string
+        default: 'ghcr.io'
+      version-tag:
+        type: boolean
+        default: false
+    secrets:
+      GIT_CLONE_PAT:
+        required: false
+
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: write # for uploading the SBOM to the release
+  packages: write # for uploading the finished container
+
+
+env:
+  REGISTRY: ${{ github.event.inputs.registry || 'ghcr.io' }}
+  # NOTE: We assume that a project named after the repo owner exists in the
+  # registry. The image will be uploaded as <repo_name> under the <repo_owner>
+  # project.
+  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}
+
+
+jobs:
+  buildunikernel:
+    name: ${{ matrix.arch }}-${{ inputs.hypervisor }}-${{ inputs.unikernel }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    continue-on-error: true
+    permissions:
+      id-token: write # This is required for requesting the JWT
+      contents: write # for uploading the SBOM to the release
+      packages: write # for uploading the finished container
+
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set short SHA
+      run: echo "SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log into registry ${{ env.REGISTRY }}
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
+      with:
+        images: ${{ env.REGISTRY_IMAGE }}
+        tags: |
+          type=sha,prefix=${{ matrix.arch }}-
+
+    - name: Get revision SHA and branch
+      id: get-rev
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event.pull_request.merged }}" == true ]; then
+            sha="${{ github.sha }}"
+            branch="${{ github.base_ref }}"
+            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
+          else
+            sha="${{ github.event.pull_request.head.sha }}"
+            branch="${{ github.event.pull_request.head.ref }}"
+            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
+          fi
+        else
+          sha="${{ github.sha }}"
+          branch="${{ github.ref_name }}"
+          echo "${{ github.event_name }} event. SHA: ${sha}, Branch: ${branch}"
+        fi
+        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+      shell: bash
+ 
+    - name: Build and push ${{ env.REGISTRY_IMAGE }}
+      id: build-and-push
+      uses: docker/build-push-action@v6
+      with:
+          context: ./${{ inputs.unikernel }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          provenance: false
+          file: ./${{ inputs.unikernel }}/bunnyfile-${{inputs.hypervisor}}-${{ matrix.arch }}
+          #build-args: |
+            #ARCHTAG=${{ fromJson(env.RUNNER_ARCH_MAP)[0][matrix.arch] }}
+            #BRANCH=${{ github.event.ref_name || github.ref_name }}
+
+    - name: Set ${{ matrix.arch }} digest output
+      id: set-outputs
+      run: |
+          # Workaround for https://github.com/actions/runner/issues/2499
+          echo "digest-${{ matrix.arch }}=${{ steps.build-and-push.outputs.digest }}" \
+            >> "$GITHUB_OUTPUT"
+      shell: bash

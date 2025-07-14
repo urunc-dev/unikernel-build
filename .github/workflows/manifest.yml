@@ -1,0 +1,70 @@
+name: Manifest
+
+on:
+  workflow_call:
+    inputs:
+      unikernel:
+        required: true
+        type: string
+      hypervisor:
+        required: true
+        type: string
+      registry:
+        type: string
+        default: 'ghcr.io'
+      version-tag:
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: write # for uploading the SBOM to the release
+  packages: write # for uploading the finished container
+
+env:
+  REGISTRY: ${{ github.event.inputs.registry || 'ghcr.io' }}
+  # NOTE: We assume that a project named after the repo owner exists in the
+  # registry. The image will be uploaded as <repo_name> under the <repo_owner>
+  # project.
+  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}
+
+jobs:
+  manifest:
+    runs-on: ubuntu-22.04
+    steps:
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.4.0
+
+    - name: Check install!
+      run: cosign version
+
+    - name: Log into registry ${{ env.REGISTRY }}
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create manifest
+      run: |
+        TAGS=${{ env.REGISTRY_IMAGE }}:latest
+        docker manifest rm $TAGS || true
+        docker manifest create $TAGS \
+           --amend ${{ env.REGISTRY_IMAGE }}:amd64 \
+           --amend ${{ env.REGISTRY_IMAGE }}:arm64
+        HASH=$(docker manifest push $TAGS)
+        echo "hash=$HASH" >> $GITHUB_ENV
+        echo "tags=$TAGS" >> $GITHUB_ENV
+
+    - name: Sign the published Docker image
+      env:
+        COSIGN_EXPERIMENTAL: "true"
+        DIGEST: ${{ env.hash }}
+        TAGS: ${{ env.tags }}
+      run: |
+        cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
+        -a "repo=${{github.repository}}" \
+        -a "workflow=${{github.workflow}}" \
+        -a "ref=${{github.sha}}" \
+        -a "author=Nubificus LTD"

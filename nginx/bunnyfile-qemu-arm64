@@ -1,0 +1,13 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: unikraft
+  monitor: qemu
+  architecture: arm64
+
+kernel:
+  from: unikraft.org/nginx:1.15
+  path: /unikraft/bin/kernel
+
+cmdline: nginx -c /nginx/conf/nginx.conf

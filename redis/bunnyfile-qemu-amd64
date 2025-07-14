@@ -1,0 +1,13 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: unikraft
+  monitor: qemu
+  architecture: x86
+
+kernel:
+  from: unikraft.org/redis:7.2
+  path: /unikraft/bin/kernel
+
+cmdline: /usr/bin/redis-server

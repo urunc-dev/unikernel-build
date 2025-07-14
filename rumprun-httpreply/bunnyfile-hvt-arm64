@@ -1,0 +1,18 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:4140d99
+version: v0.1
+
+platforms:
+  framework: rumprun
+  monitor: hvt
+  architecture: arm64
+
+rootfs:
+  from: scratch
+  type: raw
+
+app:
+  name: nginx
+  from: github.com/cloudkernels/rumprun-packages
+  branch: feat_update_docker
+
+cmdline: "nginx"

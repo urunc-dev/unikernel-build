@@ -1,0 +1,69 @@
+name: OCI image push
+
+on:
+  push:
+      branches:
+        - main
+  pull_request:
+      branches:
+        - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  build-rumprun:
+    strategy:
+      matrix:
+        unikernel: [ rumprun-httpreply ]
+        hypervisor: [ hvt, spt ]
+      fail-fast: false
+    uses: ./.github/workflows/build-bunny.yml
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
+
+  manifest-rumprun:
+    needs: [build-rumprun]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ rumprun-httpreply ]
+        hypervisor: [ hvt, spt ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
+
+  build-unikraft:
+    strategy:
+      matrix:
+        unikernel: [ nginx, redis ]
+        hypervisor: [ fc, qemu]
+      fail-fast: false
+    uses: ./.github/workflows/build-bunny.yml
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
+
+  manifest-unikraft:
+    needs: [build-rumprun]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ nginx, redis ]
+        hypervisor: [ fc, qemu ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
