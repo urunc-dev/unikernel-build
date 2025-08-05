@@ -1,0 +1,19 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: unikraft
+  version: 0.18.0
+  monitor: qemu
+  architecture: arm64
+
+rootfs:
+  from: scratch
+  include:
+    - chttp:/chttp
+
+kernel:
+  from: unikraft.org/base:latest
+  path: /unikraft/bin/kernel
+
+cmdline: /chttp
