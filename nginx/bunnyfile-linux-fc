@@ -1,0 +1,20 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: linux
+  monitor: firecracker
+  architecture: x86
+
+rootfs:
+  from: docker.io/library/nginx:alpine
+  type: raw
+
+kernel:
+  from: local
+  path: vmlinux
+
+cmd: ["/usr/sbin/nginx", "-g", "\"daemon off; error_log stderr debug;\""]
+# cmdline: "/usr/sbin/nginx -g \"daemon off; error_log stderr debug;\""
+# docker build -f bunnyfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
+
