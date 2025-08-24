@@ -193,6 +193,14 @@ jobs:
           cp ./kernel-output/${{ env.HYPERVISOR == 'qemu' && 'bzImage' || 'vmlinux' }} ./${{ env.UNIKERNEL_NAME }}/
           echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/nubificus/bunny-${{ env.UNIKERNEL_NAME }}-${{ env.HYPERVISOR }}" >> $GITHUB_ENV
 
+      - name: Fetch urunit for nginx
+        id: urunit-nginx
+        if: ${{ env.UNIKERNEL_NAME == 'nginx' }}
+        run: |
+          mkdir tmp_rootfs && \
+          docker export $(docker create harbor.nbfc.io/nubificus/urunit:latest ) | tar -C tmp_rootfs -xvf - && \
+          cp -r tmp_rootfs/urunit ./${{ env.UNIKERNEL_NAME }}/
+
       - name: Login to registry
         uses: docker/login-action@v3
         with:

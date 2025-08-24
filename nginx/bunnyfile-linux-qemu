@@ -10,6 +10,10 @@ platforms:
 rootfs:
   from: docker.io/library/nginx:alpine
   type: raw
+  include:
+    - urunit:/urunit
+
+entrypoint: ["/urunit"]
 
 kernel:
   from: local
