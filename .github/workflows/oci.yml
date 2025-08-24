@@ -92,62 +92,28 @@ jobs:
   #     hypervisor: ${{ matrix.hypervisor }}
   #   secrets: inherit
 
-  build-linux:
+  build-linux-kernel:
+    strategy:
+      fail-fast: false
+    uses: ./.github/workflows/build-kernel.yml
+    with:
+      kernel_version: "6.14"
+      # unikernel: ${{ matrix.unikernel }}
+      # hypervisor: ${{ matrix.hypervisor }}
+      defconfig_file: "configs/defconfig.json"
+    secrets: inherit
+
+  build-linux-unikernels:
+    needs: build-linux-kernel
     strategy:
       matrix:
         unikernel: [ nginx, redis ]
         hypervisor: [ qemu, fc ]
       fail-fast: false
-    uses: ./.github/workflows/build-kernel.yml
+    uses: ./.github/workflows/build-linux-unikernel.yml
     with:
       kernel_version: "6.14"
       unikernel: ${{ matrix.unikernel }}
       hypervisor: ${{ matrix.hypervisor }}
-      defconfig: |
-        CONFIG_POSIX_TIMERS=y
-        CONFIG_NAMESPACES=y
-        CONFIG_PTP_1588_CLOCK_MOCK=y
-        CONFIG_HIGH_RES_TIMERS=y
-        CONFIG_BLK_DEV_INITRD=y
-        CONFIG_EXPERT=y
-        CONFIG_HYPERVISOR_GUEST=y
-        CONFIG_PARAVIRT=y
-        CONFIG_PVH=y
-        CONFIG_JUMP_LABEL=y
-        CONFIG_BINFMT_MISC=y
-        CONFIG_NET=y
-        CONFIG_UNIX=y
-        CONFIG_INET=y
-        CONFIG_IP_MULTICAST=y
-        CONFIG_IP_PNP=y
-        CONFIG_IP_PNP_DHCP=y
-        CONFIG_PCI=y
-        CONFIG_DEVTMPFS=y
-        CONFIG_DEVTMPFS_MOUNT=y
-        CONFIG_VIRTIO_BLK=y
-        CONFIG_NETDEVICES=y
-        CONFIG_VIRTIO_NET=y
-        CONFIG_SERIAL_8250=y
-        CONFIG_SERIAL_8250_CONSOLE=y
-        CONFIG_SERIAL_8250_NR_UARTS=1
-        CONFIG_SERIAL_8250_RUNTIME_UARTS=1
-        CONFIG_VIRT_DRIVERS=y
-        CONFIG_VIRTIO_PCI=y
-        CONFIG_VIRTIO_MMIO=y
-        CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y
-        CONFIG_VHOST_NET=y
-        CONFIG_EXT2_FS=y
-        CONFIG_EXT2_FS_XATTR=y
-        CONFIG_EXT2_FS_POSIX_ACL=y
-        CONFIG_EXT2_FS_SECURITY=y
-        CONFIG_TMPFS=y
-        CONFIG_CRYPTO=y
-        CONFIG_CRYPTO_CRC32C=y
-        CONFIG_CONSOLE_LOGLEVEL_DEFAULT=4
-        CONFIG_FRAME_WARN=1024
-        CONFIG_DEBUG_MEMORY_INIT=y
-        CONFIG_UNWINDER_FRAME_POINTER=y
-        CONFIG_NET_9P=y
-        CONFIG_NET_9P_VIRTIO=y
-        CONFIG_NET_9P_FS=y
+      defconfig_file: "configs/defconfig.json"
     secrets: inherit

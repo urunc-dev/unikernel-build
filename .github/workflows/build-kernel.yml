@@ -7,16 +7,8 @@ on:
         description: 'Linux Kernel version to build'
         required: true
         type: string
-      defconfig:
-        description: 'Kernel defconfig contents'
-        required: true
-        type: string
-      unikernel:
-        description: 'Which unikernel to build (nginx or redis)'
-        required: true
-        type: string
-      hypervisor:
-        description: 'Which hypervisor to target (qemu or fc)'
+      defconfig_file:
+        description: 'Path to defconfig JSON'
         required: true
         type: string
       registry:
@@ -37,16 +29,8 @@ on:
         description: 'Linux Kernel version to build'
         required: true
         type: string
-      defconfig:
-        description: 'Kernel defconfig contents'
-        required: true
-        type: string
-      unikernel:
-        description: 'Which unikernel to build (nginx or redis)'
-        required: true
-        type: string
-      hypervisor:
-        description: 'Which hypervisor to target (qemu or fc)'
+      defconfig_file:
+        description: 'Path to defconfig JSON'
         required: true
         type: string
       registry:
@@ -73,13 +57,21 @@ jobs:
   check-artifact:
     runs-on: base-dind-2204-amd64
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Load defconfig JSON
+        id: defconfig
+        run: |
+          DEFCONFIG=$(jq -c . "${{ inputs.defconfig_file }}")
+          echo "defconfig=$DEFCONFIG" >> $GITHUB_OUTPUT
+      
       - name: Check if Kernel Artifact Exists
         id: check
         run: |
           echo "Checking for existing artifacts..."
 
           # Compute the hash of the defconfig contents
-          CONFIG_HASH=$(echo -n "${{ inputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
+          CONFIG_HASH=$(echo -n "${{ steps.defconfig.outputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
           echo "Config hash: $CONFIG_HASH"
 
           # Build the artifact name based on kernel_version and defconfig hash
@@ -109,7 +101,7 @@ jobs:
           echo "Checking for existing artifacts..."
 
           # Compute the hash of the defconfig contents
-          CONFIG_HASH=$(echo -n "${{ inputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
+          CONFIG_HASH=$(echo -n "${{ steps.defconfig.outputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
           echo "Config hash: $CONFIG_HASH"
 
           # Build the artifact name based on kernel_version and defconfig hash
@@ -143,7 +135,7 @@ jobs:
           echo "${{ inputs.defconfig }}" > .config
           make olddefconfig
           make -j$(nproc)
-          CONFIG_HASH=$(echo -n "${{ inputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
+          CONFIG_HASH=$(echo -n "${{ steps.defconfig.outputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
           echo "config_hash=${CONFIG_HASH}" >> $GITHUB_ENV
 
       - name: Archive Kernel Artifact
@@ -159,138 +151,3 @@ jobs:
         with:
           name: linux-kernel-fc-${{ inputs.kernel_version }}-${{ env.config_hash }}
           path: linux-source/vmlinux
-
-  build-unikernel:
-    needs: check-artifact
-    runs-on: ${{ format('{0}-{1}', 'base-dind-2204', matrix.arch) }}
-    strategy:
-      matrix:
-        arch: ["amd64"]
-    outputs:
-      digest-amd64: ${{ steps.set-outputs.outputs.digest-amd64 }}
-      digest-arm64: ${{ steps.set-outputs.outputs.digest-arm64 }}
-    steps:
-      - name: Set variables
-        id: vars
-        run: |
-          CONFIG_HASH=$(echo -n "${{ inputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
-          echo "KERNEL_ARTIFACT=linux-kernel-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
-          echo "KERNEL_ARTIFACT_FC=linux-kernel-fc-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
-          echo "UNIKERNEL_NAME=${{ inputs.unikernel }}" >> $GITHUB_ENV
-          echo "HYPERVISOR=${{ inputs.hypervisor }}" >> $GITHUB_ENV
-
-      # - name: Determine Kernel Version and Config Hash
-      #   id: kernel_version
-      #   run: |
-      #     CONFIG_HASH=$(echo -n "${{ inputs.defconfig }}" | md5sum | cut -d ' ' -f 1)
-      #     echo "KERNEL_ARTIFACT=linux-kernel-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
-      #     echo "KERNEL_ARTIFACT_FC=linux-kernel-fc-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
-
-      - name: Get Artifact ID
-        id: get_artifact
-        uses: actions/github-script@v7
-        env:
-          HYPERVISOR: ${{ env.HYPERVISOR }}
-          KERNEL_ARTIFACT: ${{ env.KERNEL_ARTIFACT }}
-          KERNEL_ARTIFACT_FC: ${{ env.KERNEL_ARTIFACT_FC }}
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const artifactName = process.env.HYPERVISOR === 'qemu'
-              ? process.env.KERNEL_ARTIFACT
-              : process.env.KERNEL_ARTIFACT_FC;
-      
-            const runs = await github.rest.actions.listWorkflowRunsForRepo({
-              owner,
-              repo,
-              status: "completed",
-              per_page: 20,
-            });
-      
-            for (const run of runs.data.workflow_runs) {
-              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                owner,
-                repo,
-                run_id: run.id,
-              });
-      
-              const artifact = artifacts.data.artifacts.find(a => a.name === artifactName);
-              if (artifact) {
-                console.log(`Found artifact ID: ${artifact.id}`);
-                core.setOutput("artifact_id", artifact.id);
-                return;
-              }
-            }
-      
-            core.setFailed("Artifact not found.");
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download Kernel Artifact
-        run: |
-          curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.get_artifact.outputs.artifact_id }}/zip" -o artifact.zip
-          unzip artifact.zip -d ./kernel-output
-
-#      - name: Download Kernel Image QEMU
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: ${{ env.KERNEL_ARTIFACT }}
-#          path: ./kernel-output
-#
-#      - name: Download Kernel Image FC
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: ${{ env.KERNEL_ARTIFACT_FC }}
-#          path: ./kernel-output
-
-      - name: List Downloaded Files
-        run: ls -l ./kernel-output
-      
-      - name: Prepare build context
-        run: |
-          cp ./kernel-output/${{ env.HYPERVISOR == 'qemu' && 'bzImage' || 'vmlinux' }} ./${{ env.UNIKERNEL_NAME }}/
-          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/nubificus/bunny-${{ env.UNIKERNEL_NAME }}-${{ env.HYPERVISOR }}" >> $GITHUB_ENV
-
-      - name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.harbor_user }}
-          password: ${{ secrets.harbor_secret }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=sha,prefix=${{ matrix.arch }}-
-            type=ref,event=branch,prefix=${{ matrix.arch }}-
-
-      - name: Build and push ${{ matrix.arch }} image 
-        id: build-and-push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./${{ env.UNIKERNEL_NAME }}
-          file: ./${{ env.UNIKERNEL_NAME }}/bunnyfile-linux-${{ env.HYPERVISOR == 'fc' && 'fc' || 'qemu' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/${{ matrix.arch }}
-          push: true
-          provenance: false
-          build-args: |
-            ARCHTAG=${{ fromJson(env.RUNNER_ARCH_MAP)[0][matrix.arch] }}
-            BRANCH=${{ github.event.ref_name || github.ref_name }}
-
-      - name: Set output digests
-        id: set-outputs
-        run: |
-          echo "digest-${{ env.HYPERVISOR }}-${{ matrix.arch }}=${{ steps.build-and-push.outputs.digest }}" >> $GITHUB_OUTPUT
-        shell: bash
