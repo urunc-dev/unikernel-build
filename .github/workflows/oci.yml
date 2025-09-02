@@ -44,29 +44,29 @@ jobs:
   #     hypervisor: ${{ matrix.hypervisor }}
   #   secrets: inherit
 
-  # build-unikraft:
-  #   strategy:
-  #     matrix:
-  #       unikernel: [ nginx, redis ]
-  #       hypervisor: [ fc, qemu]
-  #     fail-fast: false
-  #   uses: ./.github/workflows/build-bunny.yml
-  #   with:
-  #     unikernel: ${{ matrix.unikernel }}
-  #     hypervisor: ${{ matrix.hypervisor }}
-  #   secrets: inherit
+  build-unikraft:
+    strategy:
+      matrix:
+        unikernel: [ nginx, redis ]
+        hypervisor: [ fc, qemu]
+      fail-fast: false
+    uses: ./.github/workflows/build-bunny.yml
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
 
-  # manifest-unikraft:
-  #   needs: [build-unikraft]
-  #   uses: ./.github/workflows/manifest.yml
-  #   strategy:
-  #     matrix:
-  #       unikernel: [ nginx, redis ]
-  #       hypervisor: [ fc, qemu ]
-  #   with:
-  #     unikernel: ${{ matrix.unikernel }}
-  #     hypervisor: ${{ matrix.hypervisor }}
-  #   secrets: inherit
+  manifest-unikraft:
+    needs: [build-unikraft]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ nginx, redis ]
+        hypervisor: [ fc, qemu ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
 
   # build-chttp-unikraft:
   #   strategy:

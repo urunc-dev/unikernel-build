@@ -10,4 +10,4 @@ kernel:
   from: unikraft.org/redis:7.2
   path: /unikraft/bin/kernel
 
-cmdline: /usr/bin/redis-server
+cmd: ["/usr/bin/redis-server"]
