@@ -20,29 +20,29 @@ concurrency:
 
 jobs:
 
-  # build-rumprun:
-  #   strategy:
-  #     matrix:
-  #       unikernel: [ rumprun-httpreply ]
-  #       hypervisor: [ hvt, spt ]
-  #     fail-fast: false
-  #   uses: ./.github/workflows/build-bunny.yml
-  #   with:
-  #     unikernel: ${{ matrix.unikernel }}
-  #     hypervisor: ${{ matrix.hypervisor }}
-  #   secrets: inherit
+  build-rumprun:
+    strategy:
+      matrix:
+        unikernel: [ rumprun-httpreply ]
+        hypervisor: [ hvt, spt ]
+      fail-fast: false
+    uses: ./.github/workflows/build-bunny.yml
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
 
-  # manifest-rumprun:
-  #   needs: [build-rumprun]
-  #   uses: ./.github/workflows/manifest.yml
-  #   strategy:
-  #     matrix:
-  #       unikernel: [ rumprun-httpreply ]
-  #       hypervisor: [ hvt, spt ]
-  #   with:
-  #     unikernel: ${{ matrix.unikernel }}
-  #     hypervisor: ${{ matrix.hypervisor }}
-  #   secrets: inherit
+  manifest-rumprun:
+    needs: [build-rumprun]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ rumprun-httpreply ]
+        hypervisor: [ hvt, spt ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
 
   build-unikraft:
     strategy:

@@ -15,4 +15,4 @@ app:
   from: github.com/cloudkernels/rumprun-packages
   branch: feat_update_docker
 
-cmdline: "nginx"
+cmd: ["nginx"]
