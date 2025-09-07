@@ -121,4 +121,11 @@ jobs:
           # Workaround for https://github.com/actions/runner/issues/2499
           echo "digest-${{ matrix.arch }}=${{ steps.build-and-push.outputs.digest }}" \
             >> "$GITHUB_OUTPUT"
+          echo "${{ steps.build-and-push.outputs.digest }}" > digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ matrix.arch }}.txt
       shell: bash
+
+    - name: Upload digest artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ matrix.arch }}.txt
+        path: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ matrix.arch }}.txt

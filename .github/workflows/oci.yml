@@ -47,7 +47,7 @@ jobs:
   build-unikraft:
     strategy:
       matrix:
-        unikernel: [ nginx, redis ]
+        unikernel: [ nginx ]
         hypervisor: [ fc, qemu]
       fail-fast: false
     uses: ./.github/workflows/build-bunny.yml
@@ -61,12 +61,44 @@ jobs:
     uses: ./.github/workflows/manifest.yml
     strategy:
       matrix:
-        unikernel: [ nginx, redis ]
+        unikernel: [ nginx ]
         hypervisor: [ fc, qemu ]
     with:
       unikernel: ${{ matrix.unikernel }}
       hypervisor: ${{ matrix.hypervisor }}
     secrets: inherit
+
+  # build-unikraft-local:
+  #   strategy:
+  #     matrix:
+  #       archconfig: [ amd64, arm64 ]
+  #       unikernel: [ httpreply ]
+  #       hypervisor: [ qemu, fc]
+  #     fail-fast: false
+  #   uses: ./.github/workflows/build-unikraft-local.yml
+  #   with:
+  #     matrix: ${{ matrix.archconfig }}
+  #     unikernel: ${{ matrix.unikernel }}
+  #     hypervisor: ${{ matrix.hypervisor }}
+  #   secrets: inherit 
+  #     # aws_access_key: ${{ secrets.AWS_ACCESS_KEY}}
+  #     # aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY}}
+  #     # harbor_user: ${{ secrets.HARBOR_USER }}
+  #     # harbor_secret: ${{ secrets.HARBOR_SECRET }}
+
+  # manifest-unikraft-local:
+  #   needs: [build-unikraft-local]
+  #   uses: ./.github/workflows/manifest.yml
+  #   strategy:
+  #     matrix:
+  #       archconfig: [ amd64, arm64 ]
+  #       unikernel: [ httpreply ]
+  #       hypervisor: [ qemu, fc]
+  #   with:
+  #     # matrix: ${{ matrix.archconfig }}
+  #     unikernel: ${{ matrix.unikernel }}
+  #     hypervisor: ${{ matrix.hypervisor }}
+  #   secrets: inherit
 
   # build-chttp-unikraft:
   #   strategy:
