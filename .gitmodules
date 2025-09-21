@@ -1,0 +1,9 @@
+[submodule "unikernel-httpreply"]
+	path = unikernel-httpreply
+	url = https://github.com/nubificus/app-httpreply.git
+[submodule ".unikernel-redis"]
+	path = .unikernel-redis
+	url = git@github.com:nubificus/app-redis.git
+[submodule "unikernel-redis"]
+	path = unikernel-redis
+	url = git@github.com:nubificus/app-redis.git
