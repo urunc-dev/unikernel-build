@@ -1,0 +1,3 @@
+[submodule "unikernel-httpreply"]
+	path = unikernel-httpreply
+	url = https://github.com/nubificus/app-httpreply.git
