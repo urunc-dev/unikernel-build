@@ -15,6 +15,9 @@ on:
       version-tag:
         type: boolean
         default: false
+      postfix:
+        type: string
+        default: ''
 
 permissions:
   id-token: write # This is required for requesting the JWT
@@ -26,7 +29,7 @@ env:
   # NOTE: We assume that a project named after the repo owner exists in the
   # registry. The image will be uploaded as <repo_name> under the <repo_owner>
   # project.
-  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}
+  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}${{ inputs.postfix }}
 
 jobs:
   manifest:
@@ -77,20 +80,20 @@ jobs:
     - name: Download digests amd64
       uses: actions/download-artifact@v4
       with:
-        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-amd64.txt
+        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-amd64${{ inputs.postfix }}.txt
         path: ./digests/
 
     - name: Download digests arm64
       uses: actions/download-artifact@v4
       with:
-        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-arm64.txt
+        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-arm64${{ inputs.postfix }}.txt
         path: ./digests
 
     - name: Read digests
       id: digests
       run: |
-        amd64_d=$(cat ./digests/digest-${{ inputs.unikernel }}-${{ inputs.hypervisor }}-amd64.txt)
-        arm64_d=$(cat ./digests/digest-${{ inputs.unikernel }}-${{ inputs.hypervisor }}-arm64.txt)
+        amd64_d=$(cat ./digests/digest-${{ inputs.unikernel }}-${{ inputs.hypervisor }}-amd64${{ inputs.postfix }}.txt)
+        arm64_d=$(cat ./digests/digest-${{ inputs.unikernel }}-${{ inputs.hypervisor }}-arm64${{ inputs.postfix }}.txt)
         echo "amd64=$amd64_d" >> $GITHUB_OUTPUT
         echo "arm64=$arm64_d" >> $GITHUB_OUTPUT
       shell: bash

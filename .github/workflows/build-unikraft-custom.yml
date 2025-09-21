@@ -1,0 +1,147 @@
+name: Buildandsign
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        default: '["base", "dind", "2204"]'
+      runner-archs:
+        type: string
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        type: string
+        default: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
+      arch:
+        required: true
+        type: string
+      unikernel:
+        required: true
+        type: string
+      hypervisor:
+        required: true
+        type: string
+      postfix:
+        type: string
+        default: ''
+    secrets:
+      GIT_CLONE_PAT:
+        required: false
+      # aws_access_key:
+      #   required: true
+      # aws_secret_access_key:
+      #   required: true
+      # harbor_secret:
+      #   required: true
+      # harbor_user:
+      #   required: true
+
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+  packages: write # for uploading the finished container
+
+env:
+  REGISTRY: ${{ github.event.inputs.registry || 'ghcr.io' }}
+  # NOTE: We assume that a project named after the repo owner exists in the
+  # registry. The image will be uploaded as <repo_name> under the <repo_owner>
+  # project.
+  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}${{ inputs.postfix }}
+  RUNNER_ARCH_MAP: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
+
+
+
+jobs:
+  buildunikernel:
+    name: ${{ inputs.arch }}-${{ inputs.hypervisor }}-${{ inputs.unikernel }}${{ inputs.postfix }}
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    runs-on: ${{ format('{0}-{1}', join(fromJSON(inputs.runner), '-'), inputs.arch) }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Build unikraft unikernel
+      run: |
+        sudo apt update && sudo apt install -y bison flex unzip
+        cd unikernel-${{ inputs.unikernel }}
+        git clone https://github.com/unikraft/unikraft workdir/unikraft -b RELEASE-0.18.0
+        git clone https://github.com/unikraft/lib-lwip workdir/libs/lwip -b RELEASE-0.18.0
+        if [ "${{ inputs.unikernel }}" = "redis" ]; then
+          git clone https://github.com/unikraft/lib-musl workdir/libs/musl -b RELEASE-0.18.0
+          git clone https://github.com/unikraft/lib-redis workdir/libs/redis -b RELEASE-0.18.0
+        fi
+        export LOCALARCH=$(uname -m | sed s/aarch64/arm64/)
+        ls -la $(pwd)
+        export UK_DEFCONFIG=$(pwd)/.config.${{ inputs.unikernel }}_${{ inputs.hypervisor }}-${LOCALARCH} 
+        echo $LOCALARCH
+        echo $UK_DEFCONFIG
+        make defconfig
+        make -j $(nproc)
+        mkdir -p ${{ github.workspace }}/artifact
+        cp workdir/build/${{ inputs.unikernel }}_${{ inputs.hypervisor }}-${LOCALARCH} ${{ github.workspace }}/artifact/${{ inputs.unikernel }}_${{ inputs.hypervisor }}-${{inputs.arch}}
+
+#    - name: Upload packaged artifact to s3
+#      uses: cloudkernels/minio-upload@v5
+#      with:
+#        url: https://s3.nbfc.io
+#        access-key: ${{ secrets.aws_access_key }}
+#        secret-key: ${{ secrets.aws_secret_access_key }}
+#        remote-path: bima/${{inputs.arch}}/${{ inputs.unikernel }}_${{inputs.hypervisor}}-${{inputs.arch}}
+#        local-path: ${{ github.workspace }}/artifact/${{ inputs.unikernel }}_${{inputs.hypervisor }}-${{ inputs.arch }}
+#        policy: 1
+
+    - name: Login to registry ${{ env.REGISTRY }}
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY_IMAGE }}
+        tags: |
+            type=sha,prefix=${{ inputs.arch }}-
+#            type=ref,event=branch,prefix=${{ inputs.arch }}-
+#            type=raw,value=${{ inputs.arch }}
+
+    - name: Build and push ${{ inputs.arch }} image
+      id: build-and-push
+      uses: docker/build-push-action@v6
+      with:
+          context: ./unikernel-${{inputs.unikernel}}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/${{ inputs.arch }}
+          push: true
+          provenance: false
+          file: ./unikernel-${{inputs.unikernel}}/bunnyfile-${{inputs.hypervisor}}-${{inputs.arch}}
+          # build-args: |
+          #   ARCHTAG=${{ fromJson(env.RUNNER_ARCH_MAP)[0][arch.arch] }}
+          #   BRANCH=${{ github.event.ref_name || github.ref_name }}
+
+    - name: Set ${{ inputs.arch }} digest output
+      id: set-outputs
+      run: |
+          # Workaround for https://github.com/actions/runner/issues/2499
+          echo "digest-${{ inputs.arch }}=${{ steps.build-and-push.outputs.digest }}" \
+            >> "$GITHUB_OUTPUT"
+          echo "${{ steps.build-and-push.outputs.digest }}" > digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt
+      shell: bash
+
+    - name: Upload digest artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt
+        path: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt
