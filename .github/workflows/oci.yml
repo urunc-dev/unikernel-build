@@ -23,7 +23,7 @@ jobs:
   build-rumprun:
     strategy:
       matrix:
-        unikernel: [ rumprun-httpreply ]
+        unikernel: [ rumprun-httpreply, rumprun-redis ]
         hypervisor: [ hvt, spt ]
       fail-fast: false
     uses: ./.github/workflows/build-bunny.yml
@@ -37,7 +37,7 @@ jobs:
     uses: ./.github/workflows/manifest.yml
     strategy:
       matrix:
-        unikernel: [ rumprun-httpreply ]
+        unikernel: [ rumprun-httpreply, rumprun-redis ]
         hypervisor: [ hvt, spt ]
     with:
       unikernel: ${{ matrix.unikernel }}

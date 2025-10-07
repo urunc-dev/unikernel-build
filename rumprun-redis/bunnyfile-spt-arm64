@@ -1,0 +1,19 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: rumprun
+  monitor: spt
+  architecture: arm64
+
+rootfs:
+  from: scratch
+  type: raw
+  include:
+  - conf/:/conf
+
+kernel:
+  from: local
+  path: redis.spt
+
+cmd: ["redis-server", "/data/conf/redis.conf"]
