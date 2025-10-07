@@ -99,6 +99,25 @@ jobs:
         echo "sha=${sha}" >> "$GITHUB_OUTPUT"
         echo "branch=${branch}" >> "$GITHUB_OUTPUT"
       shell: bash
+    
+    - name: Build rumprun redis unikernel
+      id: build-rumprun-redis-uni
+      if: ${{ inputs.unikernel == 'rumprun-redis' }}
+      run: |
+        sudo apt-get install -y zlib1g-dev
+        cd ${{ inputs.unikernel }}
+        git clone https://github.com/cloudkernels/rumprun-packages.git
+        cd rumprun-packages
+        git clone https://github.com/cloudkernels/rumprun.git
+        cd rumprun
+        git submodule update --init --recursive
+        ./build-rr.sh solo5
+        # Load the environment PATH settings for the toolchain
+        . "$(pwd)/obj-${{ matrix.arch }}-solo5/config-PATH.sh"
+        # Copy and configure config.mk
+        cp config.mk.dist config.mk
+        echo "RUMPRUN_TOOLCHAIN_TUPLE=${{ matrix.arch }}-rumprun-netbsd" >> config.mk
+
  
     - name: Build and push ${{ env.REGISTRY_IMAGE }}
       id: build-and-push
