@@ -1,0 +1,14 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:937585f
+version: v0.1
+
+platforms:
+  framework: mirage
+  monitor: hvt
+  architecture: arm64
+
+app:
+  name: net
+  from: local
+  path: .
+
+cmdline: "--hello=`Bunny`"

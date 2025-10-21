@@ -44,6 +44,30 @@ jobs:
       hypervisor: ${{ matrix.hypervisor }}
     secrets: inherit
 
+  build-mirage:
+    strategy:
+      matrix:
+        unikernel: [ hello-key-mirage, net-mirage, block-mirage ]
+        hypervisor: [ hvt, spt ]
+      fail-fast: false
+    uses: ./.github/workflows/build-bunny.yml
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
+
+  manifest-mirage:
+    needs: [build-mirage]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ hello-key-mirage, net-mirage, block-mirage ]
+        hypervisor: [ hvt, spt ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+    secrets: inherit
+
   build-unikraft:
     strategy:
       matrix:
