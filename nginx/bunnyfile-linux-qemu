@@ -4,7 +4,6 @@ version: v0.1
 platforms:
   framework: linux
   monitor: qemu
-  # monitor: firecracker
   architecture: x86
 
 rootfs:

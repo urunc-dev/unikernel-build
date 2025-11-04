@@ -74,7 +74,7 @@ jobs:
     runs-on: ${{ format('{0}-{1}', 'base-dind-2204', matrix.arch) }}
     strategy:
       matrix:
-        arch: ["amd64"]
+        arch: ["amd64", "arm64"]
     outputs:
       digest-amd64: ${{ steps.set-outputs.outputs.digest-amd64 }}
       digest-arm64: ${{ steps.set-outputs.outputs.digest-arm64 }}

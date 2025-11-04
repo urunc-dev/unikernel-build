@@ -11,7 +11,7 @@ on:
         default: '["amd64", "arm64"]'
       runner-arch-map:
         type: string
-        default: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
+        default: '[{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm", "arm":"armv7l"}]'
       arch:
         required: true
         type: string
@@ -58,7 +58,7 @@ jobs:
       contents: write
       id-token: write
       packages: write
-    runs-on: ${{ format('{0}-{1}', join(fromJSON(inputs.runner), '-'), inputs.arch) }}
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[inputs.arch] }}
     
     steps:
     - name: Checkout code
