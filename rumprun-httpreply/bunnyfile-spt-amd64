@@ -1,4 +1,4 @@
-#syntax=harbor.nbfc.io/nubificus/bunny:4140d99
+#syntax=harbor.nbfc.io/nubificus/bunny:61c49ad
 version: v0.1
 
 platforms:
