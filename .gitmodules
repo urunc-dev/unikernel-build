@@ -7,3 +7,6 @@
 [submodule "unikernel-redis"]
 	path = unikernel-redis
 	url = git@github.com:nubificus/app-redis.git
+[submodule "mirage-skeleton"]
+	path = mirage-skeleton
+	url = git@github.com:mirage/mirage-skeleton.git

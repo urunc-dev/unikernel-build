@@ -12,50 +12,65 @@ on:
         required: true
         type: string
       registry:
-        default: 'harbor.nbfc.io'
+        default: 'ghcr.io'
         required: false
         type: string
+      arch:
+        type: string
+        required: true
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        type: string
+        default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
+        # default: '[{"amd64":"base-dind-2204-amd64", "arm64":"base-dind-2204-arm64"}]'
     secrets:
       GIT_CLONE_PAT:
         required: false
-      harbor_user:
-        required: false
-      harbor_secret:
-        required: false
+      # harbor_user:
+      #   required: false
+      # harbor_secret:
+      #   required: false
 
-  workflow_dispatch:
-    inputs:
-      kernel_version:
-        description: 'Linux Kernel version to build'
-        required: true
-        type: string
-      defconfig_file:
-        description: 'Path to defconfig JSON'
-        required: true
-        type: string
-      registry:
-        default: 'harbor.nbfc.io'
-        required: false
-        type: string
-    secrets:
-      GIT_CLONE_PAT:
-        required: false
-      harbor_user:
-        required: false
-      harbor_secret:
-        required: false
+  # workflow_dispatch:
+  #   inputs:
+  #     kernel_version:
+  #       description: 'Linux Kernel version to build'
+  #       required: true
+  #       type: string
+  #     defconfig_file:
+  #       description: 'Path to defconfig JSON'
+  #       required: true
+  #       type: string
+  #     registry:
+  #       default: 'ghcr.io'
+  #       required: false
+  #       type: string
+  #     arch:
+  #       type: string
+  #       required: true
+  #       default: '["amd64", "arm64"]'
+  #     runner-arch-map:
+  #       type: string
+  #       # default: '[{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}]'
+  #       default: '[{"amd64":"base-dind-2204-amd64", "arm64":"base-dind-2204-arm64"}]'
+  #   secrets:
+  #     GIT_CLONE_PAT:
+  #       required: false
+  #     harbor_user:
+  #       required: false
+  #     harbor_secret:
+  #       required: false
       
 env:    
-  REGISTRY: ${{ github.event.inputs.registry || 'harbor.nbfc.io' }}
+  REGISTRY: ${{ github.event.inputs.registry || 'ghcr.io' }}
   # NOTE: We assume that a project named after the repo owner exists in the
   # registry. The image will be uploaded as <repo_name> under the <repo_owner>
   # project.
   REGISTRY_IMAGE: ${{ github.repository }}
-  RUNNER_ARCH_MAP: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
 
 jobs:
   check-artifact:
-    runs-on: base-dind-2204-amd64
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[inputs.arch] }}
     steps:
       - uses: actions/checkout@v4
 

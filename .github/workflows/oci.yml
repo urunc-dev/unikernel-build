@@ -54,6 +54,8 @@ jobs:
     with:
       unikernel: ${{ matrix.unikernel }}
       hypervisor: ${{ matrix.hypervisor }}
+      cppath: '{"hello-key-mirage":"tutorial/hello-key", "net-mirage":"device-usage/network", "block-mirage":"device-usage/block"}'
+      runcode: 'mirage'
     secrets: inherit
 
   manifest-mirage:
@@ -152,23 +154,28 @@ jobs:
   #     hypervisor: ${{ matrix.hypervisor }}
   #   secrets: inherit
 
-  build-linux-kernel:
-    strategy:
-      fail-fast: false
-    uses: ./.github/workflows/build-kernel.yml
-    with:
-      kernel_version: "6.14"
-      # unikernel: ${{ matrix.unikernel }}
-      # hypervisor: ${{ matrix.hypervisor }}
-      defconfig_file: "configs/defconfig.json"
-    secrets: inherit
+  # build-linux-kernel:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       archconfig: [ amd64, arm64 ]
+  #   uses: ./.github/workflows/build-kernel.yml
+  #   with:
+  #     kernel_version: "6.14"
+  #     # unikernel: ${{ matrix.unikernel }}
+  #     # hypervisor: ${{ matrix.hypervisor }}
+  #     defconfig_file: "configs/defconfig.json"
+  #     arch: ${{ matrix.archconfig }}
+  #   secrets: inherit
 
   build-linux-unikernels:
-    needs: build-linux-kernel
+    # needs: build-linux-kernel
     strategy:
       matrix:
         unikernel: [ nginx, redis ]
         hypervisor: [ qemu, fc ]
+        postfix: [ -linux ]
+        archconfig: [ amd64, arm64 ]
       fail-fast: false
     uses: ./.github/workflows/build-linux-unikernel.yml
     with:
@@ -176,4 +183,20 @@ jobs:
       unikernel: ${{ matrix.unikernel }}
       hypervisor: ${{ matrix.hypervisor }}
       defconfig_file: "configs/defconfig.json"
+      postfix: ${{ matrix.postfix }}
+      arch: ${{ matrix.archconfig }}
+    secrets: inherit
+
+  manifest-linux-unikernels:
+    needs: [build-linux-unikernels]
+    uses: ./.github/workflows/manifest.yml
+    strategy:
+      matrix:
+        unikernel: [ nginx, redis ]
+        hypervisor: [ qemu, fc ]
+        postfix: [ -linux ]
+    with:
+      unikernel: ${{ matrix.unikernel }}
+      hypervisor: ${{ matrix.hypervisor }}
+      postfix: ${{ matrix.postfix }}
     secrets: inherit

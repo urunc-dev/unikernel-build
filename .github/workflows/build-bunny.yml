@@ -15,6 +15,12 @@ on:
       version-tag:
         type: boolean
         default: false
+      cppath:   # Only for mirage images. Shows the path of .ml files.
+        type: string
+        required: false
+      runcode:
+        type: string
+        required: false
     secrets:
       GIT_CLONE_PAT:
         required: false
@@ -99,6 +105,25 @@ jobs:
         echo "sha=${sha}" >> "$GITHUB_OUTPUT"
         echo "branch=${branch}" >> "$GITHUB_OUTPUT"
       shell: bash
+    
+    - name: Checkout rumprun packages
+      if: ${{ inputs.unikernel == 'rumprun-httpreply' }}
+      uses: actions/checkout@v4
+      with:
+        repository: cloudkernels/rumprun-packages
+        ref: feat_update_docker
+        path: rumprun-packages
+    
+    - name: Copy rumprun data
+      if: ${{ inputs.unikernel == 'rumprun-httpreply' }}
+      run: |
+        cp -r rumprun-packages/nginx/data ./${{ inputs.unikernel }}/data
+
+    - name: Copy ml files for mirage images
+      if: ${{ inputs.runcode == 'mirage' }}
+      run: |
+        cp mirage-skeleton/${{ fromJSON(inputs.cppath)[inputs.unikernel] }}/config.ml  ./${{ inputs.unikernel }}
+        cp mirage-skeleton/${{ fromJSON(inputs.cppath)[inputs.unikernel] }}/unikernel.ml  ./${{ inputs.unikernel }}
  
     - name: Build and push ${{ env.REGISTRY_IMAGE }}
       id: build-and-push

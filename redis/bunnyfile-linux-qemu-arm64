@@ -1,0 +1,19 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+
+platforms:
+  framework: linux
+  monitor: qemu
+  architecture: arm64
+
+rootfs:
+  from: docker.io/library/redis:alpine
+  type: raw
+
+kernel:
+  from: local
+  path: vmlinuz-6.12.47-171
+
+cmd: ["/usr/local/bin/redis-server"]
+# docker build -f bunnyfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
+

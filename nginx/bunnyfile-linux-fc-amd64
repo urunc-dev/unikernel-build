@@ -3,8 +3,7 @@ version: v0.1
 
 platforms:
   framework: linux
-  monitor: qemu
-  # monitor: firecracker
+  monitor: firecracker
   architecture: x86
 
 rootfs:
@@ -17,9 +16,9 @@ entrypoint: ["/urunit"]
 
 kernel:
   from: local
-  path: bzImage
+  path: vmlinux-6.12.47-171
 
-cmd: ["/usr/sbin/nginx", "-g", "\"daemon off; error_log stderr debug;\""]
+cmd: ['/usr/sbin/nginx', '-g', 'daemon off; error_log stderr debug;']
 # cmdline: "/usr/sbin/nginx -g \"daemon off; error_log stderr debug;\""
 # docker build -f bunnyfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
 

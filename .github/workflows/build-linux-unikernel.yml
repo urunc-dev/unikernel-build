@@ -20,61 +20,72 @@ on:
         required: true
         type: string
       registry:
-        default: 'harbor.nbfc.io'
+        default: 'ghcr.io'
         required: false
         type: string
+      postfix:
+        type: string
+        default: ''
+      arch:
+        type: string
+        required: true
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        type: string
+        default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
+        # default: '[{"amd64":"base-dind-2204-amd64", "arm64":"base-dind-2204-arm64"}]'
     secrets:
       GIT_CLONE_PAT:
         required: false
-      harbor_user:
-        required: false
-      harbor_secret:
-        required: false
+      # harbor_user:
+      #   required: false
+      # harbor_secret:
+      #   required: false
 
-  workflow_dispatch:
-    inputs:
-      kernel_version:
-        description: 'Linux Kernel version to build'
-        required: true
-        type: string
-      defconfig_file:
-        description: 'Path to defconfig JSON'
-        required: true
-        type: string
-      unikernel:
-        description: 'Which unikernel to build (nginx or redis)'
-        required: true
-        type: string
-      hypervisor:
-        description: 'Which hypervisor to target (qemu or fc)'
-        required: true
-        type: string
-      registry:
-        default: 'harbor.nbfc.io'
-        required: false
-        type: string
-    secrets:
-      GIT_CLONE_PAT:
-        required: false
-      harbor_user:
-        required: false
-      harbor_secret:
-        required: false
+  # workflow_dispatch:
+  #   inputs:
+  #     kernel_version:
+  #       description: 'Linux Kernel version to build'
+  #       required: true
+  #       type: string
+  #     defconfig_file:
+  #       description: 'Path to defconfig JSON'
+  #       required: true
+  #       type: string
+  #     unikernel:
+  #       description: 'Which unikernel to build (nginx or redis)'
+  #       required: true
+  #       type: string
+  #     hypervisor:
+  #       description: 'Which hypervisor to target (qemu or fc)'
+  #       required: true
+  #       type: string
+  #     registry:
+  #       default: 'ghcr.io'
+  #       required: false
+  #       type: string
+  #     postfix:
+  #       type: string
+  #       default: ''
+  #   secrets:
+  #     GIT_CLONE_PAT:
+  #       required: false
+      # harbor_user:
+      #   required: false
+      # harbor_secret:
+      #   required: false
       
 env:    
-  REGISTRY: ${{ github.event.inputs.registry || 'harbor.nbfc.io' }}
+  REGISTRY: ${{ github.event.inputs.registry || 'ghcr.io' }}
   # NOTE: We assume that a project named after the repo owner exists in the
   # registry. The image will be uploaded as <repo_name> under the <repo_owner>
   # project.
-  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'harbor.nbfc.io' }}/${{ github.repository }}
+  REGISTRY_IMAGE: ${{ github.event.inputs.registry || 'ghcr.io' }}/${{ github.repository }}/${{ inputs.unikernel }}-${{ inputs.hypervisor }}${{ inputs.postfix }}
   RUNNER_ARCH_MAP: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
 
 jobs:
   build-unikernel:
-    runs-on: ${{ format('{0}-{1}', 'base-dind-2204', matrix.arch) }}
-    strategy:
-      matrix:
-        arch: ["amd64"]
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[inputs.arch] }}
     outputs:
       digest-amd64: ${{ steps.set-outputs.outputs.digest-amd64 }}
       digest-arm64: ${{ steps.set-outputs.outputs.digest-arm64 }}
@@ -109,69 +120,82 @@ jobs:
       #     echo "KERNEL_ARTIFACT=linux-kernel-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
       #     echo "KERNEL_ARTIFACT_FC=linux-kernel-fc-${{ inputs.kernel_version }}-${CONFIG_HASH}" >> $GITHUB_ENV
 
-      - name: Download Kernel Artifact (same run)
-        id: dl_same
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: ./kernel-output
+      # - name: Download Kernel Artifact (same run)
+      #   id: dl_same
+      #   continue-on-error: true
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: ${{ env.ARTIFACT_NAME }}
+      #     path: ./kernel-output
 
-      # - name: Check kernel-output contents
+      # # - name: Check kernel-output contents
+      # #   run: |
+      # #     pwd
+      # #     ls -l
+      # #     ls -R ./kernel-output || echo "kernel-output not found"
+      
+      # - name: Get Artifact ID
+      #   if: ${{ steps.dl_same.outcome == 'failure' }}
+      #   id: get_artifact
+      #   uses: actions/github-script@v7
+      #   env:
+      #     HYPERVISOR: ${{ env.HYPERVISOR }}
+      #     KERNEL_ARTIFACT: ${{ env.KERNEL_ARTIFACT }}
+      #     KERNEL_ARTIFACT_FC: ${{ env.KERNEL_ARTIFACT_FC }}
+      #   with:
+      #     script: |
+      #       const owner = context.repo.owner;
+      #       const repo = context.repo.repo;
+      #       const artifactName = process.env.HYPERVISOR === 'qemu'
+      #         ? process.env.KERNEL_ARTIFACT
+      #         : process.env.KERNEL_ARTIFACT_FC;
+
+      #       console.log(`Looking for artifact: ${artifactName}`);
+      
+      #       const runs = await github.rest.actions.listWorkflowRunsForRepo({
+      #         owner,
+      #         repo,
+      #         status: "completed",
+      #         per_page: 20,
+      #       });
+      
+      #       for (const run of runs.data.workflow_runs) {
+      #         const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+      #           owner,
+      #           repo,
+      #           run_id: run.id,
+      #         });
+      
+      #         const artifact = artifacts.data.artifacts.find(a => a.name === artifactName);
+      #         if (artifact) {
+      #           console.log(`Found artifact ID: ${artifact.id}`);
+      #           core.setOutput("artifact_id", artifact.id);
+      #           return;
+      #         }
+      #       }
+      
+      #       core.setFailed("Artifact not found.");
+
+      # - name: Download Kernel Artifact
+      #   if: ${{ steps.dl_same.outcome == 'failure' }}
       #   run: |
-      #     pwd
-      #     ls -l
-      #     ls -R ./kernel-output || echo "kernel-output not found"
-      
-      - name: Get Artifact ID
-        if: ${{ steps.dl_same.outcome == 'failure' }}
-        id: get_artifact
-        uses: actions/github-script@v7
-        env:
-          HYPERVISOR: ${{ env.HYPERVISOR }}
-          KERNEL_ARTIFACT: ${{ env.KERNEL_ARTIFACT }}
-          KERNEL_ARTIFACT_FC: ${{ env.KERNEL_ARTIFACT_FC }}
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const artifactName = process.env.HYPERVISOR === 'qemu'
-              ? process.env.KERNEL_ARTIFACT
-              : process.env.KERNEL_ARTIFACT_FC;
+      #     curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+      #       -H "Accept: application/vnd.github.v3+json" \
+      #       "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.get_artifact.outputs.artifact_id }}/zip" -o artifact.zip
+      #     unzip artifact.zip -d ./kernel-output
 
-            console.log(`Looking for artifact: ${artifactName}`);
-      
-            const runs = await github.rest.actions.listWorkflowRunsForRepo({
-              owner,
-              repo,
-              status: "completed",
-              per_page: 20,
-            });
-      
-            for (const run of runs.data.workflow_runs) {
-              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                owner,
-                repo,
-                run_id: run.id,
-              });
-      
-              const artifact = artifacts.data.artifacts.find(a => a.name === artifactName);
-              if (artifact) {
-                console.log(`Found artifact ID: ${artifact.id}`);
-                core.setOutput("artifact_id", artifact.id);
-                return;
-              }
-            }
-      
-            core.setFailed("Artifact not found.");
-
-      - name: Download Kernel Artifact
-        if: ${{ steps.dl_same.outcome == 'failure' }}
+      - name: Download Kata Kernel Artifact
         run: |
-          curl -s -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.get_artifact.outputs.artifact_id }}/zip" -o artifact.zip
-          unzip artifact.zip -d ./kernel-output
+          KATA_VERSION="3.22.0"
+          ARCH=${{ inputs.arch }}
+          FILE="kata-static-${KATA_VERSION}-${ARCH}.tar.zst"
+          URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/${FILE}"
+
+          echo "Downloading ${URL}..."
+          curl -L --fail -o "${FILE}" "${URL}"
+          echo "Downloaded ${FILE}"
+          mkdir -p kernel-output
+          tar --use-compress-program=unzstd -xf kata-static-*.tar.zst -C kernel-output
 
 #      - name: Download Kernel Image QEMU
 #        uses: actions/download-artifact@v4
@@ -190,53 +214,60 @@ jobs:
       
       - name: Prepare build context
         run: |
-          cp ./kernel-output/${{ env.HYPERVISOR == 'qemu' && 'bzImage' || 'vmlinux' }} ./${{ env.UNIKERNEL_NAME }}/
-          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/nubificus/bunny-${{ env.UNIKERNEL_NAME }}-${{ env.HYPERVISOR }}" >> $GITHUB_ENV
-
+          cp ./kernel-output/opt/kata/share/kata-containers/${{ inputs.hypervisor == 'qemu' && 'vmlinuz-6.12.47-171' || 'vmlinux-6.12.47-171' }} ./${{ inputs.unikernel }}/
+          
       - name: Fetch urunit for nginx
         id: urunit-nginx
-        if: ${{ env.UNIKERNEL_NAME == 'nginx' }}
+        if: ${{ inputs.unikernel == 'nginx' }}
         run: |
           mkdir tmp_rootfs && \
           docker export $(docker create harbor.nbfc.io/nubificus/urunit:latest ) | tar -C tmp_rootfs -xvf - && \
-          cp -r tmp_rootfs/urunit ./${{ env.UNIKERNEL_NAME }}/
-
-      - name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.harbor_user }}
-          password: ${{ secrets.harbor_secret }}
+          cp -r tmp_rootfs/urunit ./${{ inputs.unikernel }}/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
-            type=sha,prefix=${{ matrix.arch }}-
-            type=ref,event=branch,prefix=${{ matrix.arch }}-
+            type=sha,prefix=${{ inputs.arch }}-
 
-      - name: Build and push ${{ matrix.arch }} image 
+      - name: Build and push ${{ inputs.arch }} image 
         id: build-and-push
         uses: docker/build-push-action@v6
         with:
-          context: ./${{ env.UNIKERNEL_NAME }}
-          file: ./${{ env.UNIKERNEL_NAME }}/bunnyfile-linux-${{ env.HYPERVISOR == 'fc' && 'fc' || 'qemu' }}
+          context: ./${{ inputs.unikernel }}
+          file: ./${{ inputs.unikernel }}/bunnyfile-linux-${{ inputs.hypervisor }}-${{ inputs.arch }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/${{ inputs.arch }}
           push: true
           provenance: false
           build-args: |
-            ARCHTAG=${{ fromJson(env.RUNNER_ARCH_MAP)[0][matrix.arch] }}
+            ARCHTAG=${{ fromJson(env.RUNNER_ARCH_MAP)[0][inputs.arch] }}
             BRANCH=${{ github.event.ref_name || github.ref_name }}
 
-      - name: Set output digests
+      - name: Set ${{ inputs.arch }} digest output
         id: set-outputs
         run: |
-          echo "digest-${{ env.HYPERVISOR }}-${{ matrix.arch }}=${{ steps.build-and-push.outputs.digest }}" >> $GITHUB_OUTPUT
+            # Workaround for https://github.com/actions/runner/issues/2499
+            echo "digest-${{ inputs.arch }}=${{ steps.build-and-push.outputs.digest }}" \
+              >> "$GITHUB_OUTPUT"
+            echo "${{ steps.build-and-push.outputs.digest }}" > digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt
         shell: bash
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt
+          path: digest-${{ inputs.unikernel }}-${{inputs.hypervisor}}-${{ inputs.arch }}${{ inputs.postfix }}.txt

@@ -1,4 +1,4 @@
-#syntax=harbor.nbfc.io/nubificus/bunny:4140d99
+#syntax=harbor.nbfc.io/nubificus/bunny:61c49ad
 version: v0.1
 
 platforms:
@@ -9,6 +9,9 @@ platforms:
 rootfs:
   from: scratch
   type: raw
+  include:
+    - data/www:/www
+    - data/conf:/conf
 
 app:
   name: nginx

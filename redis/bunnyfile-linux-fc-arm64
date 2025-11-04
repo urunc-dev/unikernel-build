@@ -3,8 +3,8 @@ version: v0.1
 
 platforms:
   framework: linux
-  monitor: qemu
-  architecture: x86
+  monitor: firecracker
+  architecture: arm64
 
 rootfs:
   from: docker.io/library/redis:alpine
@@ -12,7 +12,7 @@ rootfs:
 
 kernel:
   from: local
-  path: bzImage
+  path: vmlinux-6.12.47-171
 
 cmd: ["/usr/local/bin/redis-server"]
 # docker build -f bunnyfile -t harbor.nbfc.io/nubificus/urunc/redis-rumprun-hvt:test .
