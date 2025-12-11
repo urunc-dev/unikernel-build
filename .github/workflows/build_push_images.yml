@@ -19,7 +19,7 @@ jobs:
 
     - name: Get changed files
       id: filter
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@668c092af3649c4b664c54e4b704aa46782f6f7c
       with:
         list-files: 'json'
         token: ${{ secrets.GITHUB_TOKEN }}
