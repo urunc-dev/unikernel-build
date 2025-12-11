@@ -1,0 +1,26 @@
+name: Build and push image for each framework
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        required: true
+        type: string
+      changed:
+        required: true
+        type: string
+    secrets:
+      GIT_CLONE_PAT:
+        required: true
+
+jobs:
+  for-each-framework:
+    name: Build for changed framework, monitor and supported arch
+    strategy:
+      matrix:
+        framework: [ rumprun, mirage, mewz, unikraft, linux ]
+    uses: ./.github/workflows/build_push_frameworks.yml
+    with: 
+      app: ${{ inputs.app }}
+      changed: ${{ inputs.changed }}
+      framework: ${{ matrix.framework }}

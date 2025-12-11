@@ -1,0 +1,45 @@
+name: Check and build changed apps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  get-changed-files:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.changes }}
+      hello-world: ${{ steps.filter.outputs.hello-world }}
+      hello-world_files: ${{ steps.filter.outputs.hello-world_files }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Get changed files
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        list-files: 'json'
+        filters: |
+          hello-world:
+            - `hello-world/src/**`
+            - `hello-world/rumprun/**`
+            - `hello-world/mirage/**`
+            - `hello-world/mewz/**`
+            - `hello-world/unikraft/**`
+            - `hello-world/linux/**`
+
+    - name: Show changed files
+      run: |
+        echo "Files in hello-world: ${{ steps.filter.outputs.hello-world_files }}"
+
+  for-each-changed-app:
+    name: Build changed apps
+    needs: get-changed-files
+    strategy:
+      matrix:
+        apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
+    uses: ./.github/workflows/build_push_unikernels.yml
+    with:
+      app: ${{ matrix.apps }}
+      changed: ${{ needs.get-chnaged-files.outputs[ matrix.apps + '_files' ] }}
+    secrets: inherit
