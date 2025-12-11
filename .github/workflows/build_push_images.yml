@@ -44,5 +44,5 @@ jobs:
     uses: ./.github/workflows/build_push_unikernels.yml
     with:
       app: ${{ matrix.apps }}
-      changed: ${{ needs.get-chnaged-files.outputs[ matrix.apps + '_files' ] }}
+      changed: ${{ needs.get-chnaged-files.outputs[ format('{0}_files', matrix.apps) ] }}
     secrets: inherit
