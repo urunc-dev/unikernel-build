@@ -2,6 +2,9 @@ name: Check and build changed apps
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - refactor
 
 jobs:
   get-changed-files:
