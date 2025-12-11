@@ -22,6 +22,7 @@ jobs:
       uses: dorny/paths-filter@v3
       with:
         list-files: 'json'
+        token: ${{ secrets.GITHUB_TOKEN }}
         filters: |
           hello-world:
             - `hello-world/src/**`
