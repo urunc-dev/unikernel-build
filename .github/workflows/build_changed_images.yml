@@ -49,7 +49,7 @@ jobs:
       needs.get-changed-files.outputs.hello-world_files != '' &&
       (
         contains(needs.get-changed-files.outputs.hello-world_files, 'src') ||
-        contains(needs.get-changed-files.outputs.hello-world_files, env.framework)
+        contains(needs.get-changed-files.outputs.hello-world_files, 'unikraft')
       )
     strategy:
       matrix:
