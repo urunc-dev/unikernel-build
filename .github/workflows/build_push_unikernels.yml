@@ -24,3 +24,4 @@ jobs:
       app: ${{ inputs.app }}
       changed: ${{ inputs.changed }}
       framework: ${{ matrix.framework }}
+    secrets: inherit
