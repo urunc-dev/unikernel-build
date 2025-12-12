@@ -1,14 +1,13 @@
-#syntax=harbor.nbfc.io/nubificus/bunny:61c49ad
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
 version: v0.1
 
 platforms:
-  framework: rumprun
-  monitor: hvt
+  framework: unikraft
+  monitor: qemu
   architecture: x86
 
-app:
-  name: hello
-  from: github.com/cloudkernels/rumprun-packages
-  branch: feat_update_docker
+kernel:
+  from: unikraft.org/helloworld:latest
+  path: /unikraft/bin/kernel
 
 cmd: ["hello"]
