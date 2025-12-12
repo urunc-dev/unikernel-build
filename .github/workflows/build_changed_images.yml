@@ -1,0 +1,196 @@
+name: Check and build changed apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ref_build_from_changed_files
+
+jobs:
+  get-changed-files:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.changes }}
+      hello-world: ${{ steps.filter.outputs.hello-world }}
+      hello-world_files: ${{ steps.filter.outputs.hello-world_files }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Get changed files
+      id: filter
+      uses: dorny/paths-filter@668c092af3649c4b664c54e4b704aa46782f6f7c
+      with:
+        list-files: 'json'
+        token: ${{ secrets.GITHUB_TOKEN }}
+        filters: |
+          hello-world:
+            - 'hello-world/src/**'
+            - 'hello-world/rumprun/**'
+            - 'hello-world/mirage/**'
+            - 'hello-world/mewz/**'
+            - 'hello-world/unikraft/**'
+            - 'hello-world/linux/**'
+
+    - name: Show changed files
+      run: |
+        echo "Files in hello-world: ${{ steps.filter.outputs.hello-world_files }}"
+
+  build-image:
+    name: Build and push image
+    needs: get-changed-files
+    if: |
+      contains(fromJSON(needs.get-changed-files.output.changed), 'src') ||
+      contains(fromJSON(needs.get-changed-files.output.changed), 'rumprun')
+    runs-on: [ ubuntu-22.04, ubuntu-22.04-arm ]
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set short SHA
+      run: echo "SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log into registry ${{ env.REGISTRY }}
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
+      with:
+        images: ${{ env.REGISTRY_IMAGE }}
+        tags: |
+          type=sha,prefix=${{ matrix.arch }}-
+
+    - name: Get revision SHA and branch
+      id: get-rev
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event.pull_request.merged }}" == true ]; then
+            sha="${{ github.sha }}"
+            branch="${{ github.base_ref }}"
+            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
+          else
+            sha="${{ github.event.pull_request.head.sha }}"
+            branch="${{ github.event.pull_request.head.ref }}"
+            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
+          fi
+        else
+          sha="${{ github.sha }}"
+          branch="${{ github.ref_name }}"
+          echo "${{ github.event_name }} event. SHA: ${sha}, Branch: ${branch}"
+        fi
+        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+      shell: bash
+    
+    - name: Copy source code
+      run: |
+        cp -r ./hello-world/src/* ./hello-world/rumprun
+
+    - name: Build and push
+      id: build-and-push
+      uses: docker/build-push-action@v6
+      with:
+          context: ./hello-world/rumprun
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          provenance: false
+          file: ./hello-world/rumprun/bunnyfile-hvt-${{ matrix.arch }}
+
+##  create-manifest:
+##    needs: [build-image]
+##    runs-on: ubuntu-22.04
+##    steps:
+##
+##    - name: Install Cosign
+##      uses: sigstore/cosign-installer@v3.4.0
+##
+##    - name: Check install!
+##      run: cosign version
+##
+##    - name: Log into registry ${{ env.REGISTRY }}
+##      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+##      with:
+##        registry: ${{ env.REGISTRY }}
+##        username: ${{ github.actor }}
+##        password: ${{ secrets.GITHUB_TOKEN }}
+##
+##    - name: Get revision SHA and branch
+##      id: get-rev
+##      run: |
+##        if [ "${{ github.event_name }}" == "pull_request" ]; then
+##          if [ "${{ github.event.pull_request.merged }}" == true ]; then
+##            sha="${{ github.sha }}"
+##            branch="${{ github.base_ref }}"
+##            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
+##          else
+##            sha="${{ github.event.pull_request.head.sha }}"
+##            branch="${{ github.event.pull_request.head.ref }}"
+##            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
+##          fi
+##        else
+##          sha="${{ github.sha }}"
+##          branch="${{ github.ref_name }}"
+##          echo "${{ github.event_name }} event. SHA: ${sha}, Branch: ${branch}"
+##        fi
+##        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+##        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+##      shell: bash
+##
+##    - name: Get short SHA
+##      id: get-sha
+##      run: |
+##        SHORT_SHA=$(echo "${{ steps.get-rev.outputs.sha }}" | cut -c1-7)
+##        echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+##    
+##    - name: Create manifest
+##      run: |
+##        TAGS=${{ env.REGISTRY_IMAGE }}:latest
+##        docker manifest rm $TAGS || true
+##        docker manifest create $TAGS \
+##           --amend ${{ env.REGISTRY_IMAGE }}:amd64-${{ steps.get-sha.outputs.short_sha }}@${{ steps.digests.outputs.amd64 }} \
+##           --amend ${{ env.REGISTRY_IMAGE }}:arm64-${{ steps.get-sha.outputs.short_sha }}@${{ steps.digests.outputs.arm64 }}
+##        HASH=$(docker manifest push $TAGS)
+##        echo "hash=$HASH" >> $GITHUB_ENV
+##        echo "tags=$TAGS" >> $GITHUB_ENV
+##
+##    - name: Sign the published Docker image
+##      env:
+##        COSIGN_EXPERIMENTAL: "true"
+##        DIGEST: ${{ env.hash }}
+##        TAGS: ${{ env.tags }}
+##      run: |
+##        cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
+##        -a "repo=${{github.repository}}" \
+##        -a "workflow=${{github.workflow}}" \
+##        -a "ref=${{github.sha}}" \
+##        -a "author=urunc-dev/unikernel-build"
+##  for-each-changed-app:
+##    name: Build changed apps
+##    needs: get-changed-files
+##    strategy:
+##      matrix:
+##        apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
+##    uses: ./.github/workflows/build_push_unikernels.yml
+##    with:
+##      app: ${{ matrix.apps }}
+##      changed: ${{ needs.get-chnaged-files.outputs[ format('{0}_files', matrix.apps) ] }}
+##    secrets: inherit
