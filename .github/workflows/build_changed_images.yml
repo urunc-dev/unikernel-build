@@ -106,10 +106,6 @@ jobs:
         echo "branch=${branch}" >> "$GITHUB_OUTPUT"
       shell: bash
     
-    - name: Copy source code
-      run: |
-        cp -r ./hello-world/src/* ./hello-world/rumprun
-
     - name: Build and push
       id: build-and-push
       uses: docker/build-push-action@v6
