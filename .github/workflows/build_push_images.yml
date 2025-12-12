@@ -25,12 +25,12 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         filters: |
           hello-world:
-            - `hello-world/src/**`
-            - `hello-world/rumprun/**`
-            - `hello-world/mirage/**`
-            - `hello-world/mewz/**`
-            - `hello-world/unikraft/**`
-            - `hello-world/linux/**`
+            - 'hello-world/src/**'
+            - 'hello-world/rumprun/**'
+            - 'hello-world/mirage/**'
+            - 'hello-world/mewz/**'
+            - 'hello-world/unikraft/**'
+            - 'hello-world/linux/**'
 
     - name: Show changed files
       run: |
