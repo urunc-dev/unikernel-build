@@ -67,14 +67,17 @@ jobs:
              --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }} \
              --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
         elif [[ "${{ needs.build-image-amd64.outputs.result }}" != "success" ]] &&
+        then
            [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
           docker manifest create $TAGS \
              --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
         elif [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
+        then
            [[ "${{ needs.build-image-arm64.outputs.result }}" != "success" ]]
           docker manifest create $TAGS \
              --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }}
         else
+        then
           echo "None of amd64 or arm64 images were built"
           exit 1
         fi
