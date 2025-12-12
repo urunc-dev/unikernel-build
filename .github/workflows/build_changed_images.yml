@@ -52,6 +52,7 @@ jobs:
         contains(needs.get-changed-files.outputs.hello-world_files, 'unikraft')
       )
     strategy:
+      fail-fast: false
       matrix:
         monitor: [qemu, firecracker]
         ##apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
