@@ -43,8 +43,8 @@ jobs:
     if: |
       needs.get-changed-files.outputs.hello-world_files != '' &&
       (
-        contains(fromJSON(needs.get-changed-files.outputs.hello-world_files), 'src') ||
-        contains(fromJSON(needs.get-changed-files.outputs.hello-world_files), 'rumprun')
+        contains(needs.get-changed-files.outputs.hello-world_files, 'src') ||
+        contains(needs.get-changed-files.outputs.hello-world_files, 'rumprun')
       )
     strategy:
       matrix:
