@@ -47,7 +47,7 @@ jobs:
       needs.get-changed-files.outputs.hello-world_files != '' &&
       (
         contains(needs.get-changed-files.outputs.hello-world_files, 'src') ||
-        contains(needs.get-changed-files.outputs.hello-world_files, 'rumprun')
+        contains(needs.get-changed-files.outputs.hello-world_files, 'unikraft')
       )
     strategy:
       matrix:
@@ -80,7 +80,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-hvt-rumprun
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-qemu-unikraft
         tags: |
           type=sha,prefix=${{ matrix.arch }}-,formatl=long
 
@@ -110,13 +110,13 @@ jobs:
       id: build-and-push
       uses: docker/build-push-action@v6
       with:
-          context: ./hello-world/rumprun
+          context: ./hello-world/unikraft
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ matrix.arch }}
           push: true
           provenance: false
-          file: ./hello-world/rumprun/bunnyfile-hvt-${{ matrix.arch }}
+          file: ./hello-world/unikraft/bunnyfile-qemu-${{ matrix.arch }}
 
 ##  create-manifest:
 ##    needs: [build-image]
