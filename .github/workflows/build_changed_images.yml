@@ -98,74 +98,66 @@ jobs:
           provenance: false
           file: ./hello-world/${{ env.framework }}/bunnyfile-${{ env.monitor }}-${{ matrix.arch }}
 
-##  create-manifest:
-##    needs: [build-image]
-##    runs-on: ubuntu-22.04
-##    steps:
-##
-##    - name: Install Cosign
-##      uses: sigstore/cosign-installer@v3.4.0
-##
-##    - name: Check install!
-##      run: cosign version
-##
-##    - name: Log into registry ${{ env.REGISTRY }}
-##      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-##      with:
-##        registry: ${{ env.REGISTRY }}
-##        username: ${{ github.actor }}
-##        password: ${{ secrets.GITHUB_TOKEN }}
-##
-##    - name: Get revision SHA and branch
-##      id: get-rev
-##      run: |
-##        if [ "${{ github.event_name }}" == "pull_request" ]; then
-##          if [ "${{ github.event.pull_request.merged }}" == true ]; then
-##            sha="${{ github.sha }}"
-##            branch="${{ github.base_ref }}"
-##            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
-##          else
-##            sha="${{ github.event.pull_request.head.sha }}"
-##            branch="${{ github.event.pull_request.head.ref }}"
-##            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
-##          fi
-##        else
-##          sha="${{ github.sha }}"
-##          branch="${{ github.ref_name }}"
-##          echo "${{ github.event_name }} event. SHA: ${sha}, Branch: ${branch}"
-##        fi
-##        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-##        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-##      shell: bash
-##
-##    - name: Get short SHA
-##      id: get-sha
-##      run: |
-##        SHORT_SHA=$(echo "${{ steps.get-rev.outputs.sha }}" | cut -c1-7)
-##        echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-##    
-##    - name: Create manifest
-##      run: |
-##        TAGS=${{ env.REGISTRY_IMAGE }}:latest
-##        docker manifest rm $TAGS || true
-##        docker manifest create $TAGS \
-##           --amend ${{ env.REGISTRY_IMAGE }}:amd64-${{ steps.get-sha.outputs.short_sha }}@${{ steps.digests.outputs.amd64 }} \
-##           --amend ${{ env.REGISTRY_IMAGE }}:arm64-${{ steps.get-sha.outputs.short_sha }}@${{ steps.digests.outputs.arm64 }}
-##        HASH=$(docker manifest push $TAGS)
-##        echo "hash=$HASH" >> $GITHUB_ENV
-##        echo "tags=$TAGS" >> $GITHUB_ENV
-##
-##    - name: Sign the published Docker image
-##      env:
-##        COSIGN_EXPERIMENTAL: "true"
-##        DIGEST: ${{ env.hash }}
-##        TAGS: ${{ env.tags }}
-##      run: |
-##        cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
-##        -a "repo=${{github.repository}}" \
-##        -a "workflow=${{github.workflow}}" \
-##        -a "ref=${{github.sha}}" \
-##        -a "author=urunc-dev/unikernel-build"
+  create-manifest:
+    needs: [build-image]
+    runs-on: ubuntu-22.04
+    steps:
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.4.0
+
+    - name: Check install!
+      run: cosign version
+
+    - name: Log into registry ${{ env.REGISTRY }}
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ env.monitor }}-${{ env.framework }}
+        tags: |
+          type=sha,prefix=,format=long
+
+    - name: Build and push
+      id: build-and-push
+      uses: docker/build-push-action@v6
+      with:
+          context: ./hello-world/${{ env.framework }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          provenance: false
+          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ env.monitor }}-${{ matrix.arch }}
+    - name: Create manifest
+      run: |
+        TAGS=${{ steps.meta.outputs.tags }}
+        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ env.monitor }}-${{ env.framework }}
+        docker manifest rm $TAGS || true
+        docker manifest create $TAGS \
+           --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }} \
+           --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
+        HASH=$(docker manifest push $TAGS)
+        echo "hash=$HASH" >> $GITHUB_ENV
+        echo "tags=$TAGS" >> $GITHUB_ENV
+
+    - name: Sign the published Docker image
+      env:
+        COSIGN_EXPERIMENTAL: "true"
+        DIGEST: ${{ env.hash }}
+        TAGS: ${{ env.tags }}
+      run: |
+        cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
+        -a "repo=${{github.repository}}" \
+        -a "workflow=${{github.workflow}}" \
+        -a "ref=${{github.sha}}" \
+        -a "author=urunc-dev/unikernel-build"
 
 ##  for-each-changed-app:
 ##    name: Build changed apps
