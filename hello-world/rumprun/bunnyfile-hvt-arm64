@@ -1,0 +1,14 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:61c49ad
+version: v0.1
+
+platforms:
+  framework: rumprun
+  monitor: hvt
+  architecture: arm64
+
+app:
+  name: hello
+  from: github.com/cloudkernels/rumprun-packages
+  branch: feat_update_docker
+
+cmd: ["hello"]
