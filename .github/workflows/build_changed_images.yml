@@ -124,17 +124,6 @@ jobs:
         tags: |
           type=sha,prefix=,format=long
 
-    - name: Build and push
-      id: build-and-push
-      uses: docker/build-push-action@v6
-      with:
-          context: ./hello-world/${{ env.framework }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/${{ matrix.arch }}
-          push: true
-          provenance: false
-          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ env.monitor }}-${{ matrix.arch }}
     - name: Create manifest
       run: |
         TAGS=${{ steps.meta.outputs.tags }}
