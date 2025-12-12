@@ -55,7 +55,7 @@ jobs:
       matrix:
         monitor: [qemu, firecracker]
         ##apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
-    uses: ./.github/workflows/build_images.yml
+    uses: ./.github/workflows/build_and_manifest.yml
     with:
       monitor: ${{ matrix.monitor }}
     secrets: inherit

@@ -1,4 +1,4 @@
-name: Build unikernel and single application kernel images
+name: Build unikernel and single application kernel images for specific framework,monitor and arch
 
 on:
   workflow_call:
@@ -7,6 +7,18 @@ on:
         description: "The target monitor for the unikernel or single application kernel"
         type: string
         required: true
+      runner:
+        description: "The runner to build the image"
+        type: string
+        required: true
+      arch:
+        description: "The CPU architecture"
+        type: string
+        required: true
+    outputs:
+      result:
+        description: "The result of build attempt"
+        value: ${{ jobs.build-image.outputs.result }}
 
 env:
   REGISTRY: ghcr.io
@@ -14,15 +26,10 @@ env:
 
 jobs:
   build-image:
-    name: Build and push image
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
+    name: Build and push image for ${{ inputs.arch }}
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      result: ${{ steps.result.outputs.success }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -48,66 +55,22 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
         tags: |
-          type=sha,prefix=${{ matrix.arch }}-,format=long
+          type=sha,prefix=${{ inputs.arch }}-,format=long
 
     - name: Build and push
       id: build-and-push
+      continue-on-error: true
       uses: docker/build-push-action@v6
       with:
           context: ./hello-world/${{ env.framework }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/${{ inputs.arch }}
           push: true
           provenance: false
-          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ inputs.monitor }}-${{ matrix.arch }}
+          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ inputs.monitor }}-${{ inputs.arch }}
 
-  create-manifest:
-    needs: [build-image]
-    runs-on: ubuntu-22.04
-    steps:
-
-    - name: Install Cosign
-      uses: sigstore/cosign-installer@v3.4.0
-
-    - name: Check install!
-      run: cosign version
-
-    - name: Log into registry ${{ env.REGISTRY }}
-      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Extract Docker metadata
-      id: meta
-      uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
-      with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
-        tags: |
-          type=sha,prefix=,format=long
-
-    - name: Create manifest
+    - name: Collect build result
+      id: result
       run: |
-        TAGS=${{ steps.meta.outputs.tags }}
-        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
-        docker manifest rm $TAGS || true
-        docker manifest create $TAGS \
-           --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }} \
-           --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
-        HASH=$(docker manifest push $TAGS)
-        echo "hash=$HASH" >> $GITHUB_ENV
-        echo "tags=$TAGS" >> $GITHUB_ENV
-
-    ##- name: Sign the published Docker image
-    ##  env:
-    ##    COSIGN_EXPERIMENTAL: "true"
-    ##    DIGEST: ${{ env.hash }}
-    ##    TAGS: ${{ env.tags }}
-    ##  run: |
-    ##    cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
-    ##    -a "repo=${{github.repository}}" \
-    ##    -a "workflow=${{github.workflow}}" \
-    ##    -a "ref=${{github.sha}}" \
-    ##    -a "author=urunc-dev/unikernel-build"
+        echo "success=${{ success() }}" >> $GITHUB_OUTPUT
