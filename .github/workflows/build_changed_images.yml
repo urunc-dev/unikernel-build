@@ -8,6 +8,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  framework: unikraft
+  monitor: qemu
 
 jobs:
   get-changed-files:
@@ -47,7 +49,7 @@ jobs:
       needs.get-changed-files.outputs.hello-world_files != '' &&
       (
         contains(needs.get-changed-files.outputs.hello-world_files, 'src') ||
-        contains(needs.get-changed-files.outputs.hello-world_files, 'unikraft')
+        contains(needs.get-changed-files.outputs.hello-world_files, env.framework)
       )
     strategy:
       matrix:
@@ -80,43 +82,21 @@ jobs:
       id: meta
       uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-qemu-unikraft
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ env.monitor }}-${{ env.framework }}
         tags: |
-          type=sha,prefix=${{ matrix.arch }}-,formatl=long
+          type=sha,prefix=${{ matrix.arch }}-,format=long
 
-    - name: Get revision SHA and branch
-      id: get-rev
-      run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
-          if [ "${{ github.event.pull_request.merged }}" == true ]; then
-            sha="${{ github.sha }}"
-            branch="${{ github.base_ref }}"
-            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
-          else
-            sha="${{ github.event.pull_request.head.sha }}"
-            branch="${{ github.event.pull_request.head.ref }}"
-            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
-          fi
-        else
-          sha="${{ github.sha }}"
-          branch="${{ github.ref_name }}"
-          echo "${{ github.event_name }} event. SHA: ${sha}, Branch: ${branch}"
-        fi
-        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-      shell: bash
-    
     - name: Build and push
       id: build-and-push
       uses: docker/build-push-action@v6
       with:
-          context: ./hello-world/unikraft
+          context: ./hello-world/${{ env.framework }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ matrix.arch }}
           push: true
           provenance: false
-          file: ./hello-world/unikraft/bunnyfile-qemu-${{ matrix.arch }}
+          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ env.monitor }}-${{ matrix.arch }}
 
 ##  create-manifest:
 ##    needs: [build-image]
@@ -186,6 +166,7 @@ jobs:
 ##        -a "workflow=${{github.workflow}}" \
 ##        -a "ref=${{github.sha}}" \
 ##        -a "author=urunc-dev/unikernel-build"
+
 ##  for-each-changed-app:
 ##    name: Build changed apps
 ##    needs: get-changed-files
