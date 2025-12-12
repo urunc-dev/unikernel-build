@@ -29,7 +29,7 @@ jobs:
     name: Build and push image for ${{ inputs.arch }}
     runs-on: ${{ inputs.runner }}
     outputs:
-      result: ${{ steps.result.outputs.success }}
+      result: ${{ steps.result.outputs.status }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -72,5 +72,6 @@ jobs:
 
     - name: Collect build result
       id: result
+      if: ${{ !cancelled() }}
       run: |
-        echo "success=${{ success() }}" >> $GITHUB_OUTPUT
+        echo "status=${{ job.status }}" >> $GITHUB_OUTPUT

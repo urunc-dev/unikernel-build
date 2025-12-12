@@ -60,18 +60,18 @@ jobs:
         TAGS=${{ steps.meta.outputs.tags }}
         IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
         docker manifest rm $TAGS || true
-        if [[ "${{ needs.build-image-amd64.outputs.result }}" == "true" ]] &&
-           [[ "${{ needs.build-image-arm64.outputs.result }}" == "true" ]]
+        if [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
+           [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
         then
           docker manifest create $TAGS \
              --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }} \
              --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
-        elif [[ "${{ needs.build-image-amd64.outputs.result }}" == "false" ]] &&
-           [[ "${{ needs.build-image-arm64.outputs.result }}" == "true" ]]
+        elif [[ "${{ needs.build-image-amd64.outputs.result }}" != "success" ]] &&
+           [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
           docker manifest create $TAGS \
              --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
-        elif [[ "${{ needs.build-image-amd64.outputs.result }}" == "true" ]] &&
-           [[ "${{ needs.build-image-arm64.outputs.result }}" == "false" ]]
+        elif [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
+           [[ "${{ needs.build-image-arm64.outputs.result }}" != "success" ]]
           docker manifest create $TAGS \
              --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }}
         else
