@@ -35,14 +35,17 @@ jobs:
     - name: Show changed files
       run: |
         echo "Files in hello-world: ${{ steps.filter.outputs.hello-world_files }}"
+        echo "Changes: ${{ steps.filter.outputs.changes }}"
 
   build-image:
     name: Build and push image
     needs: get-changed-files
     if: |
-      contains(fromJSON(needs.get-changed-files.output.hello-world_files), 'src') ||
-      contains(fromJSON(needs.get-changed-files.output.hello-world_files), 'rumprun')
-    runs-on: [ ubuntu-22.04, ubuntu-22.04-arm ]
+      needs.get-changed-files.outputs.hello-world_files != '' &&
+      (
+        contains(fromJSON(needs.get-changed-files.outputs.hello-world_files), 'src') ||
+        contains(fromJSON(needs.get-changed-files.outputs.hello-world_files), 'rumprun')
+      )
     strategy:
       matrix:
         include:
@@ -50,6 +53,7 @@ jobs:
             runner: ubuntu-22.04
           - arch: arm64
             runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
