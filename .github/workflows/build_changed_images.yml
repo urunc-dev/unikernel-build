@@ -40,8 +40,8 @@ jobs:
     name: Build and push image
     needs: get-changed-files
     if: |
-      contains(fromJSON(needs.get-changed-files.output.changed), 'src') ||
-      contains(fromJSON(needs.get-changed-files.output.changed), 'rumprun')
+      contains(fromJSON(needs.get-changed-files.output.hello-world_files), 'src') ||
+      contains(fromJSON(needs.get-changed-files.output.hello-world_files), 'rumprun')
     runs-on: [ ubuntu-22.04, ubuntu-22.04-arm ]
     strategy:
       matrix:
