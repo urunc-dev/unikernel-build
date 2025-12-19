@@ -71,7 +71,7 @@ jobs:
         echo "Changed files in json: ${{ steps.format.outputs.build }}"
 
   for-each-app:
-    name: Check frameworks app
+    name: Build and push
     needs: get-changed-files
     strategy:
       fail-fast: false

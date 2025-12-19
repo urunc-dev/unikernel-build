@@ -21,7 +21,7 @@ env:
 
 jobs:
   build-image-amd64:
-    name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for amd64
+    name: Monitor ${{ inputs.monitor }}
     uses: ./.github/workflows/build_images.yml
     with:
       app: ${{ inputs.app }}

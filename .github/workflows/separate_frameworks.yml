@@ -44,7 +44,7 @@ jobs:
         echo "frameworks json: ${{ steps.filter.outputs.frameworks_json }}"
 
   for-each-framework:
-    name: Check monitors for ${{ inputs.app }} and framework
+    name: App ${{ inputs.app }}
     needs: get-frameworks
     strategy:
       fail-fast: false
