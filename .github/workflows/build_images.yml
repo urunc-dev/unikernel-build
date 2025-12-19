@@ -33,7 +33,7 @@ env:
 
 jobs:
   build-image:
-    name: Build and push image for ${{ inputs.arch }}
+    name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for ${{ inputs.arch }}
     runs-on: ${{ inputs.runner }}
     outputs:
       result: ${{ steps.result.outputs.status }}

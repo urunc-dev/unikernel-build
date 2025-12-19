@@ -14,7 +14,7 @@ on:
 
 jobs:
   get-frameworks:
-    name: Get the frameworks to build ${{ inputs.app }} against
+    name: Get frameworks to build ${{ inputs.app }}
     runs-on: ubuntu-22.04
     outputs:
       frameworks: ${{ steps.filter.outputs.frameworks }}
@@ -44,7 +44,7 @@ jobs:
         echo "frameworks json: ${{ steps.filter.outputs.frameworks_json }}"
 
   for-each-framework:
-    name: Find the monitors for ${{ inputs.app }} and each framework
+    name: Check monitors for ${{ inputs.app }} and framework
     needs: get-frameworks
     strategy:
       fail-fast: false

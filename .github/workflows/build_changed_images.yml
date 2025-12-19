@@ -1,4 +1,4 @@
-name: Check and build changed apps
+name: Identify the applications to build
 
 on:
   workflow_dispatch:
@@ -71,7 +71,7 @@ jobs:
         echo "Changed files in json: ${{ steps.format.outputs.build }}"
 
   for-each-app:
-    name: Track changes for each app
+    name: Check frameworks app
     needs: get-changed-files
     strategy:
       fail-fast: false

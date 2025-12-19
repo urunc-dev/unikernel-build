@@ -49,7 +49,7 @@ jobs:
         echo "MOnitors json: ${{ steps.filter.outputs.monitors_json }}"
 
   for-each-monitor:
-    name: Build ${{ inputs.app }} over ${{ inputs.framework }} for each monitor
+    name: Build ${{ inputs.app }} over ${{ inputs.framework }} for monitor
     needs: get-monitors
     strategy:
       fail-fast: false
