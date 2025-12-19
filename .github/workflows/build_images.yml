@@ -1,8 +1,16 @@
-name: Build unikernel and single application kernel images for specific framework,monitor and arch
+name: Build unikernel and single application kernel images for specific app,framework,monitor and arch
 
 on:
   workflow_call:
     inputs:
+      app:
+        description: "The target application to build"
+        type: string
+        required: true
+      framework:
+        description: "The target framework to build against"
+        type: string
+        required: true
       monitor:
         description: "The target monitor for the unikernel or single application kernel"
         type: string
@@ -22,7 +30,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  framework: unikraft
 
 jobs:
   build-image:
@@ -53,7 +60,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
         tags: |
           type=sha,prefix=${{ inputs.arch }}-,format=long
 
@@ -61,13 +68,13 @@ jobs:
       id: build-and-push
       uses: docker/build-push-action@v6
       with:
-          context: ./hello-world/${{ env.framework }}/${{ inputs.monitor }}
+          context: ./hello-world/${{ inputs.framework }}/${{ inputs.monitor }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ inputs.arch }}
           push: true
           provenance: false
-          file: ./hello-world/${{ env.framework }}/${{ inputs.monitor }}/bunnyfile-${{ inputs.arch }}
+          file: ./hello-world/${{ inputs.framework }}/${{ inputs.monitor }}/bunnyfile-${{ inputs.arch }}
 
     - name: Collect build result
       id: result

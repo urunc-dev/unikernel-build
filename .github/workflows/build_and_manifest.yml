@@ -1,8 +1,16 @@
-name: Build unikernel and single application kernel images
+name: Build unikernel and single application kernel images for all architectures and create manifests
 
 on:
   workflow_call:
     inputs:
+      app:
+        description: "The target application to build"
+        type: string
+        required: true
+      framework:
+        description: "The target framework to build against"
+        type: string
+        required: true
       monitor:
         description: "The target monitor for the unikernel or single application kernel"
         type: string
@@ -10,11 +18,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  framework: unikraft
 
 jobs:
   build-image-amd64:
-    name: Build and push image
+    name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for amd64
     uses: ./.github/workflows/build_images.yml
     with:
       monitor: ${{ inputs.monitor }}
@@ -22,7 +29,7 @@ jobs:
       arch: "amd64"
 
   build-image-arm64:
-    name: Build and push image
+    name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for arm64
     uses: ./.github/workflows/build_images.yml
     with:
       monitor: ${{ inputs.monitor }}
@@ -30,6 +37,7 @@ jobs:
       arch: "arm64"
 
   create-manifest:
+    name: Create manifest of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }}
     needs: [build-image-amd64,build-image-arm64]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
@@ -52,14 +60,14 @@ jobs:
       id: meta
       uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
         tags: |
           type=sha,prefix=,format=long
 
     - name: Create manifest
       run: |
         TAGS=${{ steps.meta.outputs.tags }}
-        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ env.framework }}
+        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
         docker manifest rm $TAGS || true
         if [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
            [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
