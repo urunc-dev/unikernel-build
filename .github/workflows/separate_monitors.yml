@@ -18,7 +18,7 @@ on:
 
 jobs:
   get-monitors:
-    name: Get the monitors for ${{ inputs.app }} and $[[ inputs.framework }}
+    name: Get the monitors for ${{ inputs.app }} and ${{ inputs.framework }}
     runs-on: ubuntu-22.04
     outputs:
       monitors: ${{ steps.filter.outputs.monitors }}
