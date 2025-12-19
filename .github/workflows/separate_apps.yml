@@ -29,10 +29,10 @@ jobs:
       run: |
         APP=${{ inputs.app }}
         FRAMEWORKS_JSON=$(echo '${{ inputs.changed }}' | \
-          jq --arg app "$APP" '.[$app]'
+          jq -c --arg app "$APP" '.[$app]'
         )
         FRAMEWORKS=$(echo '${{ inputs.changed }}' | \
-          jq --arg app "$APP" '.[$app] | keys'
+          jq -c --arg app "$APP" '.[$app] | keys'
         )
         echo "frameworks=$FRAMEWORKS" >> "$GITHUB_OUTPUT"
         echo "frameworks_json=$FRAMEWORKS_JSON" >> "$GITHUB_OUTPUT"
