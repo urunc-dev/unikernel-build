@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
+        app: ${{ fromJSON(needs.get-changed-files.outputs.apps) }}
     uses: ./.github/workflows/separate_apps.yml
     with:
       app: ${{ matrix.app }}
