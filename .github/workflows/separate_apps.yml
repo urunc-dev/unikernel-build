@@ -1,0 +1,53 @@
+name: Find the frameworks to build for an application
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "The target application to build"
+        type: string
+        required: true
+      changed:
+        description: "The JSON object with all information for changed files"
+        type: string
+        required: true
+
+jobs:
+  get-changed-files:
+    runs-on: ubuntu-22.04
+    outputs:
+      frameworks: ${{ steps.filter.outputs.frameworks }}
+      frameworks_json: ${{ steps.filter.outputs.frameworks_json }}
+    steps:
+    - name: Get frameworks to build against
+      id: filter
+      run: |
+        APP=${{ inputs.app }}
+        FRAMEWORKS_JSON=$(echo '${{ inputs.changed }}' | \
+          jq --arg app "$APP" '.[$app]'
+        )
+        FRAMEWORKS=$(echo '${{ inputs.changed }}' | \
+          jq --arg app "$APP" '.[$app] | keys'
+        )
+        echo "frameworks=$FRAMEWORKS" >> "$GITHUB_OUTPUT"
+        echo "frameworks_json=$FRAMEWORKS_JSON" >> "$GITHUB_OUTPUT"
+
+    - name: Show changed files
+      run: |
+        echo "Frameworks to build: ${{ steps.filter.outputs.frameworks }}"
+        echo "frameworks json: ${{ steps.filter.outputs.frameworks_json }}"
+
+  for-KVM-based-monitors:
+    name: Build changed apps
+    needs: get-changed-files
+    if: |
+      needs.get-changed-files.outputs.frameworks != '' &&
+      contains(needs.get-changed-files.outputs.frameworks 'unikraft')
+    strategy:
+      fail-fast: false
+      matrix:
+        monitor: [qemu, firecracker]
+        ##apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
+    uses: ./.github/workflows/build_and_manifest.yml
+    with:
+      monitor: ${{ matrix.monitor }}
