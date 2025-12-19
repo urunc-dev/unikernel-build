@@ -77,7 +77,7 @@ jobs:
       fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.get-changed-files.outputs.apps) }}
-    uses: ./.github/workflows/separate_apps.yml
+    uses: ./.github/workflows/separate_frameworks.yml
     with:
       app: ${{ matrix.app }}
       changed_apps: ${{ needs.get-changed-files.outputs.changed_json }}
