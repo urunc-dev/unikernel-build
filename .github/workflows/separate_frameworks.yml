@@ -54,4 +54,4 @@ jobs:
     with:
       app: ${{ inputs.app }}
       framework: ${{ matrix.framework }}
-      framework_object: ${{ needs.get-frameworks.outputs.frameworks_json }}
+      frameworks_object: ${{ needs.get-frameworks.outputs.frameworks_json }}
