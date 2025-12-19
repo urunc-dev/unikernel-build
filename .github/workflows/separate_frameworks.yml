@@ -7,31 +7,32 @@ on:
         description: "The target application to build"
         type: string
         required: true
-      changed:
+      changed_apps:
         description: "The JSON object with all information for changed files"
         type: string
         required: true
 
 jobs:
-  get-changed-files:
+  get-frameworks:
+    name: Get the frameworks to build against
     runs-on: ubuntu-22.04
     outputs:
       frameworks: ${{ steps.filter.outputs.frameworks }}
       frameworks_json: ${{ steps.filter.outputs.frameworks_json }}
     steps:
-    - name: Show changed files
+    - name: Show input
       run: |
         echo "Input app: ${{ inputs.app }}"
-        echo "INput changed: ${{ inputs.changed }}"
+        echo "Input json: ${{ inputs.changed_apps }}"
 
     - name: Get frameworks to build against
       id: filter
       run: |
         APP=${{ inputs.app }}
-        FRAMEWORKS_JSON=$(echo '${{ inputs.changed }}' | \
+        FRAMEWORKS_JSON=$(echo '${{ inputs.changed_apps }}' | \
           jq -c --arg app "$APP" '.[$app]'
         )
-        FRAMEWORKS=$(echo '${{ inputs.changed }}' | \
+        FRAMEWORKS=$(echo '${{ inputs.changed_apps }}' | \
           jq -c --arg app "$APP" '.[$app] | keys'
         )
         echo "frameworks=$FRAMEWORKS" >> "$GITHUB_OUTPUT"
@@ -44,10 +45,10 @@ jobs:
 
   for-KVM-based-monitors:
     name: Build changed apps
-    needs: get-changed-files
+    needs: get-frameworks
     if: |
-      needs.get-changed-files.outputs.frameworks != '' &&
-      contains(needs.get-changed-files.outputs.frameworks, 'unikraft')
+      needs.get-frameworks.outputs.frameworks != '' &&
+      contains(needs.get-frameworks.outputs.frameworks, 'unikraft')
     strategy:
       fail-fast: false
       matrix:
