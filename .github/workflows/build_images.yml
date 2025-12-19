@@ -33,7 +33,7 @@ env:
 
 jobs:
   build-image:
-    name: Arch ${{ inputs.arch }}
+    name: App ${{ inputs.app }} Framework ${{ inputs.framework }} Monitor ${{ inputs.monitor }} Arch ${{ inputs.arch }}
     runs-on: ${{ inputs.runner }}
     outputs:
       result: ${{ steps.result.outputs.status }}

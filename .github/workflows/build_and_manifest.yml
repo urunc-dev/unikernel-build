@@ -31,7 +31,7 @@ jobs:
       arch: "amd64"
 
   build-image-arm64:
-    name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for arm64
+    name: Monitor ${{ inputs.monitor }}
     uses: ./.github/workflows/build_images.yml
     with:
       app: ${{ inputs.app }}
