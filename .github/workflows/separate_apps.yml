@@ -42,7 +42,7 @@ jobs:
     needs: get-changed-files
     if: |
       needs.get-changed-files.outputs.frameworks != '' &&
-      contains(needs.get-changed-files.outputs.frameworks 'unikraft')
+      contains(needs.get-changed-files.outputs.frameworks, 'unikraft')
     strategy:
       fail-fast: false
       matrix:
