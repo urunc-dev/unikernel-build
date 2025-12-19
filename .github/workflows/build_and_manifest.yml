@@ -24,6 +24,8 @@ jobs:
     name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for amd64
     uses: ./.github/workflows/build_images.yml
     with:
+      app: ${{ inputs.app }}
+      framework: ${{ inputs.framework }}
       monitor: ${{ inputs.monitor }}
       runner: "ubuntu-22.04"
       arch: "amd64"
@@ -32,6 +34,8 @@ jobs:
     name: Build and push image of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }} for arm64
     uses: ./.github/workflows/build_images.yml
     with:
+      app: ${{ inputs.app }}
+      framework: ${{ inputs.framework }}
       monitor: ${{ inputs.monitor }}
       runner: "ubuntu-22.04-arm"
       arch: "arm64"
