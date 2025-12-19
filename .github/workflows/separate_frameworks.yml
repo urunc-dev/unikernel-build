@@ -43,17 +43,15 @@ jobs:
         echo "Frameworks to build: ${{ steps.filter.outputs.frameworks }}"
         echo "frameworks json: ${{ steps.filter.outputs.frameworks_json }}"
 
-  for-KVM-based-monitors:
-    name: Build changed apps
+  for-each-framework:
+    name: Find the monitors for ${{ inputs.app }} and each framework
     needs: get-frameworks
-    if: |
-      needs.get-frameworks.outputs.frameworks != '' &&
-      contains(needs.get-frameworks.outputs.frameworks, 'unikraft')
     strategy:
       fail-fast: false
       matrix:
-        monitor: [qemu, firecracker]
-        ##apps: ${{ fromJSON(needs.get-chnaged-files.outputs.apps) }}
-    uses: ./.github/workflows/build_and_manifest.yml
+        framework: ${{ fromJSON(needs.get-frameworks.outputs.frameworks) }}
+    uses: ./.github/workflows/separate_monitors.yml
     with:
-      monitor: ${{ matrix.monitor }}
+      app: ${{ inputs.app }}
+      framework: ${{ matrix.framework }}
+      framework_object: ${{ needs.get-frameworks.outputs.frameworks_json }}

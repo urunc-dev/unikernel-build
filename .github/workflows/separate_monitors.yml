@@ -1,0 +1,59 @@
+name: Find the target monitors to build for an application and framework
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "The target application to build"
+        type: string
+        required: true
+      framework:
+        description: "The target framework to build against"
+        type: string
+        required: true
+      frameworks_json:
+        description: "The JSON object with all changed files for app and framework"
+        type: string
+        required: true
+
+jobs:
+  get-monitors:
+    runs-on: ubuntu-22.04
+    outputs:
+      monitors: ${{ steps.filter.outputs.monitors }}
+      monitors_json: ${{ steps.filter.outputs.monitors_json }}
+    steps:
+    - name: Show input
+      run: |
+        echo "Input app: ${{ inputs.app }}"
+        echo "Input framework: ${{ inputs.framework }}"
+        echo "Input json: ${{ inputs.frameworks_json }}"
+
+    - name: Get monitors to build against
+      id: filter
+      run: |
+        FRAMEWORK=${{ inputs.framework }}
+        MONITORS_JSON=$(echo '${{ inputs.frameworks_json }}' | \
+          jq -c --arg framework "$FRAMEWORK" '.[$framework]'
+        )
+        MONITORS=$(echo '${{ inputs.frameworks_json }}' | \
+          jq -c --arg framework "$FRAMEWORK" '.[$framework] | keys'
+        )
+        echo "monitors=$MONITORS" >> "$GITHUB_OUTPUT"
+        echo "monitors_json=$MONITORS_JSON" >> "$GITHUB_OUTPUT"
+
+    - name: Show changed files
+      run: |
+        echo "Build for monitors: ${{ steps.filter.outputs.monitors }}"
+        echo "MOnitors json: ${{ steps.filter.outputs.monitors_json }}"
+
+  for-each-monitor:
+    name: Build changed apps
+    needs: get-monitors
+    strategy:
+      fail-fast: false
+      matrix:
+        monitor: ${{ fromJSON(needs.get-monitors.outputs.monitors) }}
+    uses: ./.github/workflows/build_and_manifest.yml
+    with:
+      monitor: ${{ matrix.monitor }}
