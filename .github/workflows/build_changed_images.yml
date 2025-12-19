@@ -80,4 +80,4 @@ jobs:
     uses: ./.github/workflows/separate_apps.yml
     with:
       app: ${{ matrix.app }}
-      changed: ${{ needs.get-chnaged-files.outputs.changed_json }}
+      changed: ${{ needs.get-changed-files.outputs.changed_json }}
