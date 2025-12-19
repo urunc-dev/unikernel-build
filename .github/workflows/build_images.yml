@@ -61,13 +61,13 @@ jobs:
       id: build-and-push
       uses: docker/build-push-action@v6
       with:
-          context: ./hello-world/${{ env.framework }}
+          context: ./hello-world/${{ env.framework }}/${{ inputs.monitor }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ inputs.arch }}
           push: true
           provenance: false
-          file: ./hello-world/${{ env.framework }}/bunnyfile-${{ inputs.monitor }}-${{ inputs.arch }}
+          file: ./hello-world/${{ env.framework }}/${{ inputs.monitor }}/bunnyfile-${{ inputs.arch }}
 
     - name: Collect build result
       id: result

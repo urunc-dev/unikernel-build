@@ -14,7 +14,7 @@ on:
 
 jobs:
   get-frameworks:
-    name: Get the frameworks to build against
+    name: Get the frameworks to build ${{ inputs.app }} against
     runs-on: ubuntu-22.04
     outputs:
       frameworks: ${{ steps.filter.outputs.frameworks }}

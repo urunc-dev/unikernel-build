@@ -18,6 +18,7 @@ on:
 
 jobs:
   get-monitors:
+    name: Get the monitors for ${{ inputs.app }} and $[[ inputs.framework }}
     runs-on: ubuntu-22.04
     outputs:
       monitors: ${{ steps.filter.outputs.monitors }}
@@ -42,7 +43,7 @@ jobs:
         echo "monitors=$MONITORS" >> "$GITHUB_OUTPUT"
         echo "monitors_json=$MONITORS_JSON" >> "$GITHUB_OUTPUT"
 
-    - name: Show changed files
+    - name: Show monitors
       run: |
         echo "Build for monitors: ${{ steps.filter.outputs.monitors }}"
         echo "MOnitors json: ${{ steps.filter.outputs.monitors_json }}"
