@@ -19,6 +19,11 @@ jobs:
       frameworks: ${{ steps.filter.outputs.frameworks }}
       frameworks_json: ${{ steps.filter.outputs.frameworks_json }}
     steps:
+    - name: Show changed files
+      run: |
+        echo "Input app: ${{ inputs.app }}"
+        echo "INput changed: ${{ inputs.changed }}"
+
     - name: Get frameworks to build against
       id: filter
       run: |
