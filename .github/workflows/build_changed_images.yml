@@ -1,10 +1,24 @@
-name: Identify the applications to build
+name: Build changed images (diff-driven)
+
+# Manual-only while the pipeline is being stabilized. Compares the current ref
+# against `base` and rebuilds only the app/framework/monitor combinations whose
+# files changed. Re-enable a push trigger once the matrix is trusted.
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ref_build_from_changed_files
+    inputs:
+      base:
+        description: "Base ref to diff against for change detection"
+        type: string
+        default: 'main'
+      boot_test:
+        description: "Boot the built amd64 images with urunc"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   get-changed-files:
@@ -14,7 +28,7 @@ jobs:
       changed_json: ${{ steps.format.outputs.build }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Get changed files
       id: filter
@@ -22,6 +36,7 @@ jobs:
       with:
         list-files: 'json'
         token: ${{ secrets.GITHUB_TOKEN }}
+        base: ${{ inputs.base }}
         filters: |
           hello-world:
             - 'hello-world/**'
@@ -48,21 +63,20 @@ jobs:
 
     - name: Format build json
       id: format
+      env:
+        FILTER_OUTPUTS: ${{ toJSON(steps.filter.outputs) }}
       run: |
-        DIRS_TO_JSON=$(echo '${{ steps.filter.outputs.hello-world_files }}' | \
-          jq -c 'reduce .[] as $path (
-            {};
-            ($path | split("/")) as $parts |
-            ($parts[0:-1]) as $dirs |
-            ($parts[-1]) as $file |
-            
-            reduce range(0; $dirs | length) as $i (
-              .;
-              setpath($dirs[0:$i+1]; getpath($dirs[0:$i+1]) // (if $i == (($dirs | length) - 1) then [] else {} end))
-            ) |
-            setpath($dirs; (getpath($dirs) + [$file]))
-          )'
-        )
+        # Merge the changed-file lists of ALL filters (not just hello-world) and
+        # fold the app/framework/monitor/file paths into a nested JSON object.
+        DIRS_TO_JSON=$(echo "$FILTER_OUTPUTS" | jq -c '
+          [ to_entries[]
+            | select(.key | endswith("_files"))
+            | (.value | fromjson? // []) ]
+          | add // []
+          | map(split("/"))
+          | map(select(length == 4))
+          | reduce .[] as $p ({}; .[$p[0]][$p[1]][$p[2]] += [$p[3]])
+        ')
         echo "build=$DIRS_TO_JSON" >> "$GITHUB_OUTPUT"
 
     - name: Show changed files
@@ -81,3 +95,4 @@ jobs:
     with:
       app: ${{ matrix.app }}
       changed_apps: ${{ needs.get-changed-files.outputs.changed_json }}
+      boot_test: ${{ inputs.boot_test }}

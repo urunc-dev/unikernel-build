@@ -28,6 +28,10 @@ on:
         description: "The result of build attempt"
         value: ${{ jobs.build-image.outputs.result }}
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
 
@@ -60,7 +64,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}
         tags: |
           type=sha,prefix=${{ inputs.arch }}-,format=long
 
@@ -68,13 +72,13 @@ jobs:
       id: build-and-push
       uses: docker/build-push-action@v6
       with:
-          context: ./hello-world/${{ inputs.framework }}/${{ inputs.monitor }}
+          context: ./${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ inputs.arch }}
           push: true
           provenance: false
-          file: ./hello-world/${{ inputs.framework }}/${{ inputs.monitor }}/bunnyfile-${{ inputs.arch }}
+          file: ./${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}/bunnyfile-${{ inputs.arch }}
 
     - name: Collect build result
       id: result
