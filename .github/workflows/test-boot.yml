@@ -1,0 +1,137 @@
+name: Boot test unikernel image with urunc
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Full image reference to boot (e.g. ghcr.io/urunc-dev/unikernel-build/hello-world-qemu-unikraft:amd64-<sha>)"
+        required: true
+        type: string
+      monitor:
+        description: "Monitor the image targets (qemu or firecracker)"
+        required: true
+        type: string
+      arch:
+        description: "CPU architecture (amd64 only for now; GitHub arm64 runners lack KVM)"
+        type: string
+        default: 'amd64'
+      expected_output:
+        description: "String that must appear in the guest console output"
+        type: string
+        default: 'Hello from Unikraft!'
+      containerd_version:
+        type: string
+        default: '2.1.3'
+      nerdctl_version:
+        type: string
+        default: '2.1.3'
+      cni_version:
+        type: string
+        default: '1.7.1'
+      firecracker_version:
+        type: string
+        default: 'v1.7.0'
+      urunc_version:
+        type: string
+        default: 'v0.7.0'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Full image reference to boot"
+        required: true
+        type: string
+      monitor:
+        description: "Monitor the image targets"
+        required: true
+        type: choice
+        options: [qemu, firecracker]
+      arch:
+        description: "CPU architecture"
+        type: choice
+        options: [amd64]
+        default: 'amd64'
+      expected_output:
+        description: "String that must appear in the guest console output"
+        type: string
+        default: 'Hello from Unikraft!'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  boot-test:
+    name: Boot ${{ inputs.monitor }}/${{ inputs.arch }} image with urunc
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
+    timeout-minutes: 15
+    env:
+      CONTAINERD_VERSION: ${{ inputs.containerd_version || '2.1.3' }}
+      NERDCTL_VERSION: ${{ inputs.nerdctl_version || '2.1.3' }}
+      CNI_VERSION: ${{ inputs.cni_version || '1.7.1' }}
+      FIRECRACKER_VERSION: ${{ inputs.firecracker_version || 'v1.7.0' }}
+      URUNC_VERSION: ${{ inputs.urunc_version || 'v0.7.0' }}
+    steps:
+    - name: Install containerd
+      run: |
+        ARCH=$(dpkg --print-architecture)
+        wget -q "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz"
+        sudo tar Cxzf /usr/local "containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz"
+        wget -q "https://raw.githubusercontent.com/containerd/containerd/v${CONTAINERD_VERSION}/containerd.service"
+        sudo rm -f /lib/systemd/system/containerd.service
+        sudo mv containerd.service /lib/systemd/system/containerd.service
+        sudo mkdir -p /etc/containerd
+        containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now containerd
+
+    - name: Install CNI plugins and nerdctl
+      run: |
+        ARCH=$(dpkg --print-architecture)
+        wget -q "https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
+        sudo mkdir -p /opt/cni/bin
+        sudo tar Cxzf /opt/cni/bin "cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
+        wget -q "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${ARCH}.tar.gz"
+        sudo tar Cxzf /usr/local/bin "nerdctl-${NERDCTL_VERSION}-linux-${ARCH}.tar.gz"
+
+    - name: Install qemu
+      if: ${{ inputs.monitor == 'qemu' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends qemu-system
+
+    - name: Install firecracker
+      if: ${{ inputs.monitor == 'firecracker' }}
+      run: |
+        ARCH=$(uname -m)
+        curl -sL "https://github.com/firecracker-microvm/firecracker/releases/download/${FIRECRACKER_VERSION}/firecracker-${FIRECRACKER_VERSION}-${ARCH}.tgz" | tar -xz
+        sudo mv "release-${FIRECRACKER_VERSION}-${ARCH}/firecracker-${FIRECRACKER_VERSION}-${ARCH}" /usr/local/bin/firecracker
+        rm -rf "release-${FIRECRACKER_VERSION}-${ARCH}"
+        firecracker --version | head -1
+
+    - name: Install urunc
+      run: |
+        ARCH=$(dpkg --print-architecture)
+        wget -q "https://github.com/urunc-dev/urunc/releases/download/${URUNC_VERSION}/urunc_static_${ARCH}"
+        wget -q "https://github.com/urunc-dev/urunc/releases/download/${URUNC_VERSION}/containerd-shim-urunc-v2_static_${ARCH}"
+        sudo install -m 755 "urunc_static_${ARCH}" /usr/local/bin/urunc
+        sudo install -m 755 "containerd-shim-urunc-v2_static_${ARCH}" /usr/local/bin/containerd-shim-urunc-v2
+        urunc --version
+
+    - name: Log into registry
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | sudo nerdctl login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+    - name: Boot image and check output
+      run: |
+        set -o pipefail
+        echo "Booting ${{ inputs.image }} with urunc (${{ inputs.monitor }})"
+        sudo timeout 120 nerdctl run --rm \
+          --runtime io.containerd.urunc.v2 \
+          "${{ inputs.image }}" 2>&1 | tee boot.log || true
+        echo "---"
+        if grep -qF "${{ inputs.expected_output }}" boot.log; then
+          echo "PASS: found expected output: ${{ inputs.expected_output }}"
+        else
+          echo "FAIL: expected output not found: ${{ inputs.expected_output }}"
+          exit 1
+        fi

@@ -1,0 +1,56 @@
+name: Build all images (full matrix from repo layout)
+
+# Manual-only for now. Discovers every <app>/<framework>/<monitor>/bunnyfile-<arch>
+# in the repository and builds + manifests (+ optionally boot tests) each combination.
+# Once the matrix is stable this can gain push/pull_request triggers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      boot_test:
+        description: "Boot each amd64 image with urunc after building"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  discover:
+    name: Discover buildable images from repo layout
+    runs-on: ubuntu-22.04
+    outputs:
+      apps: ${{ steps.scan.outputs.apps }}
+      matrix_json: ${{ steps.scan.outputs.matrix_json }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Scan for bunnyfiles
+      id: scan
+      run: |
+        MATRIX_JSON=$(find . -mindepth 4 -maxdepth 4 -type f -name 'bunnyfile-*' -not -path './.*' \
+          | sed 's|^\./||' \
+          | jq -R -s -c '
+              split("\n")
+              | map(select(length > 0) | split("/"))
+              | reduce .[] as $p ({}; .[$p[0]][$p[1]][$p[2]] += [$p[3]])
+            ')
+        APPS=$(echo "$MATRIX_JSON" | jq -c 'keys')
+        echo "matrix_json=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+        echo "apps=$APPS" >> "$GITHUB_OUTPUT"
+        echo "Discovered matrix: $MATRIX_JSON"
+
+  for-each-app:
+    name: Build and push
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.discover.outputs.apps) }}
+    uses: ./.github/workflows/separate_frameworks.yml
+    with:
+      app: ${{ matrix.app }}
+      changed_apps: ${{ needs.discover.outputs.matrix_json }}
+      boot_test: ${{ inputs.boot_test }}
