@@ -1,12 +1,11 @@
-name: OCI image push
+name: OCI image push (legacy full matrix)
+
+# Legacy monolithic pipeline over the old flat repo layout. Manual-only while
+# the repo is migrated to the <app>/<framework>/<monitor> layout and the
+# split workflows (manual-build.yml, build_all.yml). Will be removed once the
+# new pipeline covers all images.
 
 on:
-  push:
-      branches:
-        - main
-  pull_request:
-      branches:
-        - main
   workflow_dispatch:
 
 permissions:
