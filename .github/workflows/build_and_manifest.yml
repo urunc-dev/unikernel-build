@@ -15,13 +15,50 @@ on:
         description: "The target monitor for the unikernel or single application kernel"
         type: string
         required: true
+      boot_test:
+        description: "Boot the built amd64 image with urunc after the manifest is pushed"
+        type: boolean
+        default: false
+      expected_output:
+        description: "String expected in the guest console output during boot test"
+        type: string
+        default: 'Hello from Unikraft!'
+
+permissions:
+  contents: read
+  packages: write
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  check-arch:
+    name: Find target architectures for ${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}
+    runs-on: ubuntu-22.04
+    outputs:
+      amd64: ${{ steps.check.outputs.amd64 }}
+      arm64: ${{ steps.check.outputs.arm64 }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check which bunnyfiles exist
+      id: check
+      run: |
+        for arch in amd64 arm64; do
+          if [ -f "${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}/bunnyfile-${arch}" ]; then
+            echo "${arch}=true" >> "$GITHUB_OUTPUT"
+            echo "Found bunnyfile for ${arch}"
+          else
+            echo "${arch}=false" >> "$GITHUB_OUTPUT"
+            echo "No bunnyfile for ${arch}, skipping this architecture"
+          fi
+        done
+
   build-image-amd64:
     name: Monitor ${{ inputs.monitor }}
+    needs: check-arch
+    if: ${{ needs.check-arch.outputs.amd64 == 'true' }}
     uses: ./.github/workflows/build_images.yml
     with:
       app: ${{ inputs.app }}
@@ -32,6 +69,8 @@ jobs:
 
   build-image-arm64:
     name: Monitor ${{ inputs.monitor }}
+    needs: check-arch
+    if: ${{ needs.check-arch.outputs.arm64 == 'true' }}
     uses: ./.github/workflows/build_images.yml
     with:
       app: ${{ inputs.app }}
@@ -41,17 +80,11 @@ jobs:
       arch: "arm64"
 
   create-manifest:
-    name: Create manifest of ${{ inputs.app }} over $${{ inputs.framework }} and ${{ inputs.monitor }}
-    needs: [build-image-amd64,build-image-arm64]
+    name: Create manifest of ${{ inputs.app }} over ${{ inputs.framework }} and ${{ inputs.monitor }}
+    needs: [build-image-amd64, build-image-arm64]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     steps:
-
-    ##- name: Install Cosign
-    ##  uses: sigstore/cosign-installer@v3.4.0
-
-    ##- name: Check install!
-    ##  run: cosign version
 
     - name: Log into registry ${{ env.REGISTRY }}
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
@@ -64,47 +97,45 @@ jobs:
       id: meta
       uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}
         tags: |
           type=sha,prefix=,format=long
 
     - name: Create manifest
       run: |
         TAGS=${{ steps.meta.outputs.tags }}
-        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/hello-world-${{ inputs.monitor }}-${{ inputs.framework }}
+        IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}
+        SHA_TAG=${{ steps.meta.outputs.version }}
         docker manifest rm $TAGS || true
         if [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
            [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
         then
           docker manifest create $TAGS \
-             --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }} \
-             --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
+             --amend ${IMAGE}:amd64-${SHA_TAG} \
+             --amend ${IMAGE}:arm64-${SHA_TAG}
         elif [[ "${{ needs.build-image-amd64.outputs.result }}" != "success" ]] &&
            [[ "${{ needs.build-image-arm64.outputs.result }}" == "success" ]]
         then
           docker manifest create $TAGS \
-             --amend ${IMAGE}:arm64-${{ steps.meta.outputs.tag-names }}
+             --amend ${IMAGE}:arm64-${SHA_TAG}
         elif [[ "${{ needs.build-image-amd64.outputs.result }}" == "success" ]] &&
            [[ "${{ needs.build-image-arm64.outputs.result }}" != "success" ]]
         then
           docker manifest create $TAGS \
-             --amend ${IMAGE}:amd64-${{ steps.meta.outputs.tag-names }}
+             --amend ${IMAGE}:amd64-${SHA_TAG}
         else
           echo "None of amd64 or arm64 images were built"
           exit 1
         fi
-        HASH=$(docker manifest push $TAGS)
-        echo "hash=$HASH" >> $GITHUB_ENV
-        echo "tags=$TAGS" >> $GITHUB_ENV
+        docker manifest push $TAGS
 
-    ##- name: Sign the published Docker image
-    ##  env:
-    ##    COSIGN_EXPERIMENTAL: "true"
-    ##    DIGEST: ${{ env.hash }}
-    ##    TAGS: ${{ env.tags }}
-    ##  run: |
-    ##    cosign sign --yes ${{ env.REGISTRY_IMAGE }}@${{ env.DIGEST }} \
-    ##    -a "repo=${{github.repository}}" \
-    ##    -a "workflow=${{github.workflow}}" \
-    ##    -a "ref=${{github.sha}}" \
-    ##    -a "author=urunc-dev/unikernel-build"
+  boot-test:
+    name: Boot test ${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}
+    needs: [check-arch, build-image-amd64]
+    if: ${{ inputs.boot_test && needs.check-arch.outputs.amd64 == 'true' && needs.build-image-amd64.outputs.result == 'success' }}
+    uses: ./.github/workflows/test-boot.yml
+    with:
+      image: ghcr.io/${{ github.repository }}/${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}:amd64-${{ github.sha }}
+      monitor: ${{ inputs.monitor }}
+      arch: amd64
+      expected_output: ${{ inputs.expected_output }}

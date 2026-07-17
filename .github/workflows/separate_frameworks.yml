@@ -11,6 +11,14 @@ on:
         description: "The JSON object with all information for changed files"
         type: string
         required: true
+      boot_test:
+        description: "Boot the built amd64 images with urunc"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   get-frameworks:
@@ -55,3 +63,4 @@ jobs:
       app: ${{ inputs.app }}
       framework: ${{ matrix.framework }}
       frameworks_json: ${{ needs.get-frameworks.outputs.frameworks_json }}
+      boot_test: ${{ inputs.boot_test }}

@@ -1,0 +1,69 @@
+name: Manual build (single app/framework/monitor)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "The target application to build"
+        type: string
+        default: 'hello-world'
+      framework:
+        description: "The target framework to build against"
+        type: string
+        default: 'unikraft'
+      monitor:
+        description: "The target monitor"
+        type: choice
+        options: [qemu, firecracker]
+        default: 'qemu'
+      arch:
+        description: "Architecture to build (all = every arch with a bunnyfile + manifest)"
+        type: choice
+        options: [amd64, arm64, all]
+        default: 'amd64'
+      boot_test:
+        description: "Boot the amd64 image with urunc after building"
+        type: boolean
+        default: true
+      expected_output:
+        description: "String expected in guest console output during boot test"
+        type: string
+        default: 'Hello from Unikraft!'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-single-arch:
+    name: Build ${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }} (${{ inputs.arch }})
+    if: ${{ inputs.arch != 'all' }}
+    uses: ./.github/workflows/build_images.yml
+    with:
+      app: ${{ inputs.app }}
+      framework: ${{ inputs.framework }}
+      monitor: ${{ inputs.monitor }}
+      runner: ${{ inputs.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
+      arch: ${{ inputs.arch }}
+
+  boot-test-single:
+    name: Boot test
+    needs: build-single-arch
+    if: ${{ inputs.arch == 'amd64' && inputs.boot_test }}
+    uses: ./.github/workflows/test-boot.yml
+    with:
+      image: ghcr.io/${{ github.repository }}/${{ inputs.app }}-${{ inputs.monitor }}-${{ inputs.framework }}:amd64-${{ github.sha }}
+      monitor: ${{ inputs.monitor }}
+      arch: amd64
+      expected_output: ${{ inputs.expected_output }}
+
+  build-all-arches:
+    name: Build ${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }} (all arches + manifest)
+    if: ${{ inputs.arch == 'all' }}
+    uses: ./.github/workflows/build_and_manifest.yml
+    with:
+      app: ${{ inputs.app }}
+      framework: ${{ inputs.framework }}
+      monitor: ${{ inputs.monitor }}
+      boot_test: ${{ inputs.boot_test }}
+      expected_output: ${{ inputs.expected_output }}
