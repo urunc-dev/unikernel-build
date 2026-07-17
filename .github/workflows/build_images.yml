@@ -48,10 +48,16 @@ jobs:
         fetch-depth: 0
 
     - name: Set short SHA
-      run: echo "SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+      run: echo "SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
+    # Pin the buildkit daemon below v0.31: since v0.31 the platform matcher
+    # treats os.features as a required subset, and unikraft catalog manifests
+    # carry their full kconfig in os.features, so kernel.from resolution fails
+    # with "no match for platform in manifest".
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: image=moby/buildkit:v0.30.0
 
     - name: Log into registry ${{ env.REGISTRY }}
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
@@ -84,4 +90,4 @@ jobs:
       id: result
       if: ${{ !cancelled() }}
       run: |
-        echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
+        echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
