@@ -74,6 +74,35 @@ jobs:
         tags: |
           type=sha,prefix=${{ inputs.arch }}-,format=long
 
+    - name: Stage mirage-skeleton app source
+      if: ${{ inputs.framework == 'mirage' }}
+      run: |
+        git submodule update --init mirage-skeleton
+        case "${{ inputs.app }}" in
+          net-mirage) src=device-usage/network ;;
+          hello-key-mirage) src=tutorial/hello-key ;;
+        esac
+        cp "mirage-skeleton/$src/config.ml" "mirage-skeleton/$src/unikernel.ml" \
+          "${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}/"
+
+    - name: Checkout rumprun-packages
+      if: ${{ inputs.framework == 'rumprun' }}
+      uses: actions/checkout@v4
+      with:
+        repository: cloudkernels/rumprun-packages
+        ref: feat_update_docker
+        path: rumprun-packages
+
+    - name: Stage rumprun app data
+      if: ${{ inputs.framework == 'rumprun' }}
+      run: |
+        case "${{ inputs.app }}" in
+          rumprun-httpreply) src=nginx ;;
+          rumprun-redis) src=redis ;;
+        esac
+        cp -r "rumprun-packages/$src/data" \
+          "${{ inputs.app }}/${{ inputs.framework }}/${{ inputs.monitor }}/data"
+
     - name: Build and push
       id: build-and-push
       uses: docker/build-push-action@v6
