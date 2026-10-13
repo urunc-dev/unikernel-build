@@ -130,22 +130,7 @@ jobs:
       postfix: ${{ matrix.postfix }}
     secrets: inherit
 
-  # build-linux-kernel:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       archconfig: [ amd64, arm64 ]
-  #   uses: ./.github/workflows/build-kernel.yml
-  #   with:
-  #     kernel_version: "6.14"
-  #     # unikernel: ${{ matrix.unikernel }}
-  #     # hypervisor: ${{ matrix.hypervisor }}
-  #     defconfig_file: "configs/defconfig.json"
-  #     arch: ${{ matrix.archconfig }}
-  #   secrets: inherit
-
   build-linux-unikernels:
-    # needs: build-linux-kernel
     strategy:
       matrix:
         unikernel: [ nginx, redis ]

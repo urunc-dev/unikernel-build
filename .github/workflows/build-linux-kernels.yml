@@ -1,0 +1,511 @@
+name: Build kernels
+
+# Builds the Linux guest kernels laid out as linux_kernel/<name>/defconfig-<arch>
+# and publishes each directory as two signed multi-arch images, one with the
+# uncompressed and one with the compressed kernel, each at /.boot/kernel:
+#
+#   linux_kernel/<name>/defconfig-<arch> -> ghcr.io/<repo>/linux-kernel:<name>
+#                                           ghcr.io/<repo>/linux-kernel:<name>-compressed
+#
+# As in Kata Containers, the GPL source is the unmodified kernel.org release
+# named in the image labels plus the defconfig and this workflow; the image
+# also carries the kernel license and the expanded .config.
+#
+# A defconfig pins its kernel version with a `# KVER=x.y.z` line; without one
+# it gets the latest longterm release, resolved once per run. All defconfigs
+# in a directory must end up on the same version. On push and pull_request
+# only the changed directories are built; pull requests build without pushing
+# and get a comment linking the built kernels.
+# Kernels are reproducible: the source is verified against the kernel.org
+# release keys, the compiler is pinned by digest and build metadata is fixed.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'linux_kernel/**'
+      - '.github/workflows/build-linux-kernels.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'linux_kernel/**'
+      - '.github/workflows/build-linux-kernels.yml'
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "Only build this kernel (generic or linux_kernel/generic); empty builds all"
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its previous run. Pushes and manual
+# runs each get their own group so they always finish: a run only builds the
+# kernels its push changed, so a cancelled or replaced run would never publish
+# them, and a cancel mid-publish could leave images pushed but unsigned.
+concurrency:
+  group: >-
+    ${{ github.event_name == 'pull_request'
+    && format('{0}-{1}', github.workflow, github.event.pull_request.number)
+    || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}/linux-kernel
+  GCC_IMAGE: gcc:15.2.0@sha256:3ae15afe768b06d0c0fe088d822ba5f8045c26630bdacc8d8e7713cf5d8e7289
+
+jobs:
+  discover:
+    name: Discover kernels to build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists PR files through the API
+    outputs:
+      builds: ${{ steps.scan.outputs.builds }}
+      images: ${{ steps.scan.outputs.images }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    # Lists the changed files on push and pull_request. Manual runs build
+    # every kernel, or only the one named in the filter input, so they skip it.
+    - name: Find changed kernels
+      id: changes
+      if: ${{ github.event_name != 'workflow_dispatch' }}
+      uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+      with:
+        list-files: json
+        filters: |
+          kernels:
+            - 'linux_kernel/**'
+          workflow:
+            - '.github/workflows/build-linux-kernels.yml'
+
+    # Emits one build per defconfig and one image per directory, e.g.
+    #   builds: [{"name":"generic","arch":"amd64","kver":"6.18.57"}, ...]
+    #   images: [{"name":"generic","kver":"6.18.57","arches":["amd64","arm64"]}]
+    # On push and pull_request only the linux_kernel/<name>/ directories with
+    # changed files are built, unless this workflow changed, which builds
+    # every kernel.
+    - name: Discover kernels
+      id: scan
+      env:
+        MODE: >-
+          ${{ (github.event_name == 'workflow_dispatch' || steps.changes.outputs.workflow == 'true')
+          && 'all' || 'changed' }}
+        CHANGED_FILES: ${{ steps.changes.outputs.kernels_files }}
+        FILTER: ${{ inputs.filter }}
+      run: |
+        set -euo pipefail
+
+        CHANGED_DIRS=null
+        if [ "$MODE" = changed ]; then
+          CHANGED_DIRS=$(jq -c 'map(split("/")[0:2] | join("/")) | unique' <<< "${CHANGED_FILES:-[]}")
+        fi
+
+        # Accept the filter as a name (generic) or a path (linux_kernel/generic/).
+        FILTER=${FILTER#linux_kernel/}
+        FILTER=${FILTER%/}
+
+        LTS=$(curl -sSf https://www.kernel.org/releases.json | jq -r '
+          [.releases[] | select(.moniker == "longterm") | .version]
+          | max_by(split(".") | map(tonumber))')
+        echo "Latest longterm release: $LTS"
+
+        ENTRIES=$(find linux_kernel -mindepth 2 -maxdepth 2 -type f -name 'defconfig-*' | sort \
+          | while read -r f; do
+              kver=$(sed -n 's/^#[[:space:]]*KVER=\([0-9.]*\)[[:space:]]*$/\1/p' "$f" | head -n1)
+              echo "$(cut -d/ -f2 <<< "$f") ${f##*/defconfig-} ${kver:-$LTS}"
+            done)
+
+        BUILDS=$(jq -R -s -c --argjson changed "$CHANGED_DIRS" --arg filter "$FILTER" '
+          split("\n")
+          | map(select(length > 0) | split(" ") | {name: .[0], arch: .[1], kver: .[2]})
+          | map(select(($changed == null) or (("linux_kernel/" + .name) as $d | any($changed[]; . == $d))))
+          | map(select(($filter == "") or .name == $filter))
+        ' <<< "$ENTRIES")
+
+        if [ -n "$FILTER" ] && [ "$BUILDS" = "[]" ]; then
+          echo "::error::No kernel named '${FILTER}': expected linux_kernel/${FILTER}/defconfig-<arch>"
+          exit 1
+        fi
+
+        UNKNOWN=$(jq -r 'map(select(.arch != "amd64" and .arch != "arm64")
+          | "linux_kernel/\(.name)/defconfig-\(.arch)") | join(" ")' <<< "$BUILDS")
+        if [ -n "$UNKNOWN" ]; then
+          echo "::error::Unsupported architecture (use defconfig-amd64 or defconfig-arm64): ${UNKNOWN}"
+          exit 1
+        fi
+
+        MIXED=$(jq -r 'group_by(.name)[] | select(map(.kver) | unique | length > 1)
+          | "\(.[0].name): \(map("\(.arch)=\(.kver)") | join(", "))"' <<< "$BUILDS")
+        if [ -n "$MIXED" ]; then
+          echo "::error::Defconfigs in one directory must use the same kernel version: $MIXED"
+          exit 1
+        fi
+
+        IMAGES=$(jq -c 'group_by(.name) | map({name: .[0].name, kver: .[0].kver, arches: map(.arch)})' <<< "$BUILDS")
+
+        echo "Kernels to build: $BUILDS"
+        echo "builds=$BUILDS" >> "$GITHUB_OUTPUT"
+        echo "images=$IMAGES" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build ${{ matrix.name }}/${{ matrix.arch }}
+    needs: discover
+    if: ${{ needs.discover.outputs.builds != '[]' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.builds) }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    # Releases are signed over the uncompressed tarball: x.y by Linus Torvalds,
+    # stable x.y.z by Greg Kroah-Hartman. Their keys are fetched over WKD, but
+    # only a signature by one of the pinned primary keys below is accepted.
+    - name: Fetch and verify kernel source
+      env:
+        KVER: ${{ matrix.kver }}
+      run: |
+        set -euo pipefail
+        URL="https://cdn.kernel.org/pub/linux/kernel/v${KVER%%.*}.x/linux-${KVER}"
+        curl -sSfLO "${URL}.tar.xz"
+        curl -sSfLO "${URL}.tar.sign"
+
+        GNUPGHOME=$(mktemp -d)
+        export GNUPGHOME
+        gpg --batch --auto-key-locate clear,wkd --locate-keys torvalds@kernel.org gregkh@kernel.org
+        # gpg explains a failure (bad signature, missing key) on stderr, and
+        # the || true lets it reach the error below instead of exiting here.
+        SIGNER=$(xz -dc "linux-${KVER}.tar.xz" \
+          | gpg --batch --status-fd 1 --verify "linux-${KVER}.tar.sign" - \
+          | awk '$2 == "VALIDSIG" { print $NF }') || true
+        case "$SIGNER" in
+          ABAF11C65A2970B130ABE3C479BE3E4300411886) echo "Signed by Linus Torvalds" ;;
+          647F28654894E3BD457199BE38DBBDC86092693E) echo "Signed by Greg Kroah-Hartman" ;;
+          *) echo "::error::linux-${KVER}.tar.xz is not signed by a trusted key"; exit 1 ;;
+        esac
+
+        tar -xf "linux-${KVER}.tar.xz"
+
+    # Expands the defconfig, fails if any =y symbol lost its dependencies (a
+    # missing built-in would leave the guest unable to mount its root), and
+    # builds the kernel both uncompressed (vmlinux on x86, booted via PVH;
+    # Image on arm64) and compressed (bzImage; Image.gz), since monitors
+    # differ in which they boot. The compressed target depends on the
+    # uncompressed one, so one make builds both. The build runs in the pinned
+    # compiler image at a fixed path with fixed KBUILD metadata so it is
+    # reproducible; bc, bison, flex and libelf only build host tools and do
+    # not end up in the kernel.
+    - name: Build kernel
+      env:
+        NAME: ${{ matrix.name }}
+        ARCH: ${{ matrix.arch }}
+        KVER: ${{ matrix.kver }}
+      run: |
+        set -euo pipefail
+        case "$ARCH" in
+          amd64) KARCH=x86_64 SRCARCH=x86 TARGET=bzImage IMG=vmlinux ZIMG=arch/x86/boot/bzImage ;;
+          arm64) KARCH=arm64 SRCARCH=arm64 TARGET=Image.gz IMG=arch/arm64/boot/Image ZIMG=arch/arm64/boot/Image.gz ;;
+          *) echo "::error::Unsupported architecture $ARCH"; exit 1 ;;
+        esac
+
+        mkdir -p out/uncompressed out/compressed
+        docker run --rm \
+          -v "$PWD/linux-${KVER}:/build/linux" \
+          -v "$PWD/linux_kernel/${NAME}/defconfig-${ARCH}:/defconfig:ro" \
+          -v "$PWD/out:/out" \
+          -w /build/linux \
+          -e KARCH="$KARCH" -e SRCARCH="$SRCARCH" -e TARGET="$TARGET" -e IMG="$IMG" -e ZIMG="$ZIMG" \
+          -e OWNER="$(id -u):$(id -g)" \
+          -e KBUILD_BUILD_TIMESTAMP='Thu Jan  1 00:00:00 UTC 1970' \
+          -e KBUILD_BUILD_USER=urunc \
+          -e KBUILD_BUILD_HOST=unikernel-build \
+          -e KBUILD_BUILD_VERSION=1 \
+          "$GCC_IMAGE" bash -euo pipefail -c '
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends bc bison flex libelf-dev > /dev/null
+
+            cp /defconfig "arch/${SRCARCH}/configs/urunc_defconfig"
+            make ARCH="$KARCH" urunc_defconfig
+            MISSING=$(grep -E "^CONFIG_[A-Z0-9_]+=y$" /defconfig | grep -vxFf .config || true)
+            if [ -n "$MISSING" ]; then
+              echo "::error::Symbols not built in after expanding the defconfig:" $MISSING
+              exit 1
+            fi
+
+            make ARCH="$KARCH" -j"$(nproc)" "$TARGET"
+            cp "$IMG" /out/uncompressed/kernel
+            cp "$ZIMG" /out/compressed/kernel
+            cp .config /out/uncompressed/config
+            cp .config /out/compressed/config
+            chown -R "$OWNER" /out
+          '
+        echo "Built linux ${KVER} for ${ARCH}: $(du -h out/uncompressed/kernel | cut -f1) uncompressed, $(du -h out/compressed/kernel | cut -f1) compressed"
+
+        # Each format gets its own artifact holding exactly what its image
+        # ships: the kernel, the config and the license, since the GPL travels
+        # with the binary. source.sha256 records which tarball it was built
+        # from, and size/ the unzipped size for the pull request comment, as
+        # the artifacts API only reports the zipped one.
+        SUM=$(sha256sum "linux-${KVER}.tar.xz" | cut -d' ' -f1)
+        mkdir -p size
+        for variant in uncompressed compressed; do
+          dir="out/${variant}"
+          mkdir -p "${dir}/LICENSES/preferred" "${dir}/LICENSES/exceptions"
+          cp "linux-${KVER}/COPYING" "${dir}/"
+          cp "linux-${KVER}/LICENSES/preferred/GPL-2.0" "${dir}/LICENSES/preferred/"
+          cp "linux-${KVER}/LICENSES/exceptions/Linux-syscall-note" "${dir}/LICENSES/exceptions/"
+          echo "$SUM" > "${dir}/source.sha256"
+          find "$dir" -type f -printf '%s\n' | awk '{ total += $1 } END { print total }' > "size/${variant}"
+        done
+
+    - name: Upload uncompressed kernel
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: kernel-${{ matrix.name }}-${{ matrix.arch }}-uncompressed
+        path: out/uncompressed/
+
+    - name: Upload compressed kernel
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: kernel-${{ matrix.name }}-${{ matrix.arch }}-compressed
+        path: out/compressed/
+
+    - name: Upload kernel sizes
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: size-kernel-${{ matrix.name }}-${{ matrix.arch }}
+        path: size/
+
+  # Pull requests from this repository get one comment, updated on every push,
+  # linking the kernels each build produced. Pull requests from forks only
+  # get a read-only token, so they are skipped.
+  comment:
+    name: Comment on pull request
+    needs: [discover, build]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.discover.result == 'success' && needs.discover.outputs.builds != '[]' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+    # Fails when no build succeeded; the comment then reports every build as
+    # failed instead of not being posted.
+    - name: Download kernel sizes
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      continue-on-error: true
+      with:
+        pattern: size-kernel-*
+        path: sizes
+
+    - name: Comment with the built kernels
+      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      env:
+        BUILDS: ${{ needs.discover.outputs.builds }}
+      with:
+        script: |
+          const fs = require('fs');
+          const mib = bytes => `${(bytes / 2 ** 20).toFixed(1)} MiB`;
+          const builds = JSON.parse(process.env.BUILDS);
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+            { owner, repo, run_id: context.runId });
+
+          // One cell per format: a link to its artifact with both sizes.
+          const cell = (b, variant) => {
+            const name = `kernel-${b.name}-${b.arch}-${variant}`;
+            const a = artifacts.find(a => a.name === name);
+            if (!a) return 'build failed';
+            const sizeFile = `sizes/size-kernel-${b.name}-${b.arch}/${variant}`;
+            const unzipped = fs.existsSync(sizeFile)
+              ? `, ${mib(Number(fs.readFileSync(sizeFile, 'utf8')))} unzipped` : '';
+            return `[${name}](${runUrl}/artifacts/${a.id}) (${mib(a.size_in_bytes)} zipped${unzipped})`;
+          };
+          const rows = builds.map(b =>
+            `| \`${b.name}\` | ${b.arch} | ${b.kver} | ${cell(b, 'uncompressed')} | ${cell(b, 'compressed')} |`);
+          const names = [...new Set(builds.map(b => b.name))];
+          const marker = '<!-- kernels-build -->';
+          const body = [
+            marker,
+            '### Kernel builds',
+            '',
+            '| Kernel | Arch | Linux | Uncompressed | Compressed |',
+            '| --- | --- | --- | --- | --- |',
+            ...rows,
+            '',
+            `On merge: ${names.flatMap(n => [n, `${n}-compressed`])
+              .map(t => `\`${process.env.REGISTRY_IMAGE}:${t}\``).join(', ')}`,
+            '',
+            `[Workflow run](${runUrl})`,
+          ].join('\n');
+
+          const comments = await github.paginate(github.rest.issues.listComments,
+            { owner, repo, issue_number });
+          const existing = comments.find(c => c.body?.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+  # One image per directory, published only if every arch of it built, so a
+  # failed build elsewhere does not hold back unrelated kernels.
+  publish:
+    name: publish ${{ matrix.name }}
+    needs: [discover, build]
+    if: >-
+      ${{ !cancelled() && github.event_name != 'pull_request'
+      && needs.discover.result == 'success' && needs.discover.outputs.images != '[]' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write # for signing the images
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.images) }}
+    steps:
+    # Full history, to check whether a newer commit changed this kernel.
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        fetch-depth: 0
+
+    - name: Download kernels
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        pattern: kernel-${{ matrix.name }}-*
+        path: dist
+
+    # Pin the buildkit daemon: different buildkit versions produce different
+    # layers from the same inputs, which would break reproducible images.
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      with:
+        driver-opts: image=moby/buildkit:v0.34.0
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@e1523de7571e31dbe865fd2e80c5c7c23ae71eb4 # v3.4.0
+
+    - name: Log into registry ${{ env.REGISTRY }}
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # As in Kata Containers, the kernel's GPL source is the unmodified
+    # kernel.org release plus this repository: each image ships the license
+    # and the expanded .config next to the kernel, and its labels name the
+    # exact tarball and defconfig it was built from. The commit is carried by
+    # the <name>-<kver>-<sha> tag and the signature rather than a label, so an
+    # unchanged kernel keeps its digest. The kernel version is part of that
+    # tag because an unpinned defconfig follows the latest LTS: re-running a
+    # commit after a new release then gets a new tag instead of moving the
+    # old one. The uncompressed and the compressed kernel are separate images,
+    # each at /.boot/kernel, so a pull fetches only the format the monitor
+    # boots: <name> and <name>-compressed, each also tagged -<kver> and
+    # -<kver>-<sha>. Per-arch images are pushed by digest only and combined
+    # into a signed index; bunnyfiles should pin the per-arch digest.
+    - name: Publish ${{ env.REGISTRY_IMAGE }}:${{ matrix.name }}
+      env:
+        NAME: ${{ matrix.name }}
+        KVER: ${{ matrix.kver }}
+        ARCHES: ${{ toJSON(matrix.arches) }}
+        SHA: ${{ github.sha }}
+        DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        MAIN: ${{ github.event.repository.default_branch }}
+      run: |
+        set -euo pipefail
+        TARBALL="https://cdn.kernel.org/pub/linux/kernel/v${KVER%%.*}.x/linux-${KVER}.tar.xz"
+        for arch in $(jq -r '.[]' <<< "$ARCHES"); do
+          for variant in uncompressed compressed; do
+            if [ ! -f "dist/kernel-${NAME}-${arch}-${variant}/kernel" ]; then
+              echo "::error::No ${variant} ${arch} kernel was built for ${NAME}"
+              exit 1
+            fi
+          done
+        done
+
+        # Runs on the default branch never cancel each other, so an older run
+        # can finish after a newer one. Only move the shared <name> and
+        # <name>-<kver> tags if no newer commit changed this kernel or this
+        # workflow; otherwise leave them to the newer run.
+        LATEST=false
+        if [ "$DEFAULT_BRANCH" = true ]; then
+          git fetch --quiet origin "$MAIN"
+          NEWER=$(git log --format=%h "${SHA}..FETCH_HEAD" -- \
+            "linux_kernel/${NAME}" .github/workflows/build-linux-kernels.yml)
+          if [ -z "$NEWER" ]; then
+            LATEST=true
+          else
+            echo "::notice::Newer commits change ${NAME} (${NEWER//$'\n'/, }); only tagging ${NAME}-${KVER}-${SHA}"
+          fi
+        fi
+
+        for variant in uncompressed compressed; do
+          TAG="${NAME}"
+          if [ "$variant" = compressed ]; then
+            TAG="${NAME}-compressed"
+          fi
+
+          KERNELS=()
+          for arch in $(jq -r '.[]' <<< "$ARCHES"); do
+            CTX="dist/kernel-${NAME}-${arch}-${variant}"
+            # FROM scratch + COPY needs no emulation for the foreign arch.
+            # Clamp every timestamp to the epoch so identical kernels produce
+            # identical image digests.
+            printf 'FROM scratch\nCOPY kernel config COPYING /.boot/\nCOPY LICENSES /.boot/LICENSES\n' \
+              | docker buildx build \
+                --platform "linux/${arch}" \
+                --file - \
+                --build-arg SOURCE_DATE_EPOCH=0 \
+                --label "org.opencontainers.image.version=${KVER}" \
+                --label "org.opencontainers.image.licenses=GPL-2.0-only WITH Linux-syscall-note" \
+                --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                --label "com.urunc.kernel.format=${variant}" \
+                --label "com.urunc.kernel.tarball=${TARBALL}" \
+                --label "com.urunc.kernel.tarball.sha256=$(cat "${CTX}/source.sha256")" \
+                --label "com.urunc.kernel.defconfig=linux_kernel/${NAME}/defconfig-${arch}" \
+                --provenance=false \
+                --output "type=image,name=${REGISTRY_IMAGE},push-by-digest=true,name-canonical=true,push=true,rewrite-timestamp=true" \
+                --metadata-file "meta-${variant}-${arch}.json" \
+                "$CTX"
+            KERNEL="${REGISTRY_IMAGE}@$(jq -r '."containerimage.digest"' "meta-${variant}-${arch}.json")"
+            echo "${variant} ${arch}: ${KERNEL}"
+            KERNELS+=("$KERNEL")
+          done
+
+          TAGS=(-t "${REGISTRY_IMAGE}:${TAG}-${KVER}-${SHA}")
+          if [ "$LATEST" = true ]; then
+            TAGS+=(-t "${REGISTRY_IMAGE}:${TAG}" -t "${REGISTRY_IMAGE}:${TAG}-${KVER}")
+          fi
+          docker buildx imagetools create "${TAGS[@]}" "${KERNELS[@]}"
+          DIGEST=$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${TAG}-${KVER}-${SHA}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "${variant} index: ${REGISTRY_IMAGE}@${DIGEST}"
+
+          # --recursive also signs each per-arch image, which is what
+          # bunnyfiles pin and what cosign verify gets pointed at.
+          cosign sign --yes --recursive "${REGISTRY_IMAGE}@${DIGEST}" \
+            -a "repo=${GITHUB_REPOSITORY}" \
+            -a "workflow=${GITHUB_WORKFLOW}" \
+            -a "ref=${SHA}" \
+            -a "kernel=${KVER}" \
+            -a "format=${variant}" \
+            -a "author=Nubificus LTD"
+        done
