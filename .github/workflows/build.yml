@@ -1,0 +1,116 @@
+name: Build images
+
+# Builds every image laid out as <app>/<framework>/<monitor>/bunnyfile-<arch>.
+# On push and pull_request only the combinations whose files changed are
+# built; pull requests build without pushing. Apps still in the old flat
+# layout are built by oci.yml.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Build all images, or only the ones changed against base"
+        type: choice
+        options: [all, changed]
+        default: all
+      base:
+        description: "Ref to diff against in changed mode"
+        type: string
+        default: origin/main
+      filter:
+        description: "Only build paths under this prefix (e.g. chttp or chttp/unikraft/qemu)"
+        type: string
+        default: ''
+
+permissions:
+  id-token: write # for signing the manifest
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Discover images to build
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Turns every <app>/<framework>/<monitor>/bunnyfile-<arch> into one matrix
+    # entry per <app>/<framework>/<monitor>, e.g.
+    #   [{"app":"chttp","framework":"unikraft","monitor":"qemu","arches":["amd64","arm64"]}]
+    # In changed mode only directories touched since BASE are kept; if BASE
+    # cannot be resolved (e.g. the all-zero "before" of a new branch) or the
+    # build workflows themselves changed, everything is built.
+    - name: Discover images
+      id: scan
+      env:
+        MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'changed' }}
+        BASE: >-
+          ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref)
+          || github.event_name == 'push' && github.event.before
+          || inputs.base }}
+        FILTER: ${{ inputs.filter }}
+      run: |
+        set -euo pipefail
+
+        COMBOS=$(find . -mindepth 4 -maxdepth 4 -type f -name 'bunnyfile-*' -not -path './.*' \
+          | sed 's|^\./||' | sort)
+
+        CHANGED_DIRS=null
+        if [ "$MODE" = changed ]; then
+          if [ -n "$BASE" ] && git rev-parse --verify -q "${BASE}^{commit}" > /dev/null; then
+            CHANGED=$(git diff --name-only "${BASE}...HEAD")
+            if ! grep -qE '^\.github/workflows/build(_and_manifest)?\.yml$' <<< "$CHANGED"; then
+              CHANGED_DIRS=$(cut -d/ -f1-3 <<< "$CHANGED" | jq -R -s -c 'split("\n") | map(select(length > 0)) | unique')
+            fi
+          else
+            echo "Cannot resolve base '${BASE}', building everything"
+          fi
+        fi
+
+        MATRIX=$(jq -R -s -c --argjson changed "$CHANGED_DIRS" --arg filter "$FILTER" '
+          split("\n")
+          | map(select(length > 0) | split("/"))
+          | map(select(($changed == null) or (.[0:3] | join("/")) as $d | any($changed[]; . == $d)))
+          | map(select(($filter == "") or ((join("/") + "/") | startswith(($filter | rtrimstr("/")) + "/"))))
+          | group_by(.[0:3])
+          | map({
+              app: .[0][0],
+              framework: .[0][1],
+              monitor: .[0][2],
+              arches: map(.[3] | ltrimstr("bunnyfile-"))
+            })
+        ' <<< "$COMBOS")
+
+        echo "Images to build: $MATRIX"
+        echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.app }}/${{ matrix.framework }}/${{ matrix.monitor }}
+    needs: discover
+    if: ${{ needs.discover.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    uses: ./.github/workflows/build_and_manifest.yml
+    with:
+      app: ${{ matrix.app }}
+      framework: ${{ matrix.framework }}
+      monitor: ${{ matrix.monitor }}
+      arches: ${{ toJSON(matrix.arches) }}
+      push: ${{ github.event_name != 'pull_request' }}
