@@ -1,0 +1,23 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:0.0.5@sha256:f13f978175c4d5272f69254f7c0f806099391441762fa9c34fd99297777780ac
+version: v0.1
+
+platforms:
+  framework: unikraft
+  version: 0.21.0
+  monitor: qemu
+  architecture: x86
+
+rootfs:
+  from: scratch
+  include:
+    - chttp:/chttp
+
+kernel:
+  # unikraft.org/base only publishes `latest`, so pin the qemu/x86_64 entry
+  # of its index by digest (org.unikraft.kernel.version 0.21.0~f06a58d).
+  # Pinning the entry rather than the index also avoids the os.features
+  # platform matching that buildkit v0.31+ fails on.
+  from: unikraft.org/base@sha256:64bd307c27b98c30aa0a354fb6636b994a372dbe2cbacf82d539a976bcad984c
+  path: /unikraft/bin/kernel
+
+cmdline: /chttp
